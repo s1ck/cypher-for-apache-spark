@@ -2,7 +2,7 @@ package org.opencypher.spark.shell
 
 import ammonite.util.Bind._
 import ammonite.util.Util
-import org.opencypher.spark.CypherOnSpark
+import org.opencypher.spark.CypherForApacheSpark
 import org.opencypher.spark.benchmark.RunBenchmark
 
 object Shell {
@@ -11,19 +11,22 @@ object Shell {
     implicit val session = RunBenchmark.sparkSession
     try {
       val welcomeBanner = {
-        val ownVersion = CypherOnSpark.version.getOrElse("<unknown>")
+        val ownVersion = CypherForApacheSpark.version.getOrElse("<unknown>")
         val ammoniteVersion = ammonite.Constants.version
         val scalaVersion = scala.util.Properties.versionNumberString
         val javaVersion = System.getProperty("java.version")
         val sparkVersion = session.version
         Util.normalizeNewlines(
-          """=   ____              __   _____          __
-             =  / __/__  ___ _____/ /__/ ___/_ _____  / /  ___ ____
-             = _\ \/ _ \/ _ `/ __/  '_/ /__/ // / _ \/ _ \/ -_) __/
-             =/___/ .__/\_,_/_/ /_/\_\\___/\_, / .__/_//_/\__/_/
-             =   /_/                      /___/_/
-             =
-             =""".stripMargin('=') +
+          """  _____          __             ___
+            = / ___/_ _____  / /  ___ ____  / _/__  ____
+            =/ /__/ // / _ \/ _ \/ -_) __/ / _/ _ \/ __/
+            =\___/\_, / .__/_//_/\__/_/   /_/ \___/_/
+            =   _/___/_/            __         ____              __
+            =  / _ | ___  ___ _____/ /  ___   / __/__  ___ _____/ /__
+            = / __ |/ _ \/ _ `/ __/ _ \/ -_) _\ \/ _ \/ _ `/ __/  '_/
+            =/_/ |_/ .__/\_,_/\__/_//_/\__/ /___/ .__/\_,_/_/ /_/\_\
+            =     /_/                          /_/
+            =""".stripMargin('=') +
           s"""|
               |Version $ownVersion
               |(Apache Spark $sparkVersion, Scala $scalaVersion, Java $javaVersion, Ammonite $ammoniteVersion)
@@ -44,7 +47,7 @@ object Shell {
         welcomeBanner = Some(welcomeBanner),
         predef =
           s"""|repl.frontEnd() = ammonite.frontend.FrontEnd.$frontend
-              |repl.prompt() = \"(:spark)-->(:cypher) \"
+              |repl.prompt() = \"(:Cypher)-[:FOR]->(:ApacheSpark) \"
               |import org.opencypher.spark.prototype.PrototypeDemo2._
               |import org.opencypher.spark.prototype.impl.instances.spark.cypher._
               |import org.opencypher.spark.prototype.impl.syntax.cypher._
