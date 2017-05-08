@@ -25,7 +25,8 @@ trait SparkCypherRecords extends CypherRecords with Serializable {
   //noinspection AccessorLikeMethodIsEmptyParen
   def toDF(): Data = data.cache()
 
-  override def show() = data.show
+  override def show() = toDF().show
+  override def count() = toDF().count()
 
   def compact = new SparkCypherRecords {
     private lazy val cachedHeader = self.header.update(compactFields)._1

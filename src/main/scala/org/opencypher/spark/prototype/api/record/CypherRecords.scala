@@ -13,4 +13,5 @@ trait CypherRecords {
   def compact: Records
 
   def show(): Unit
+  def count(): Long
 }

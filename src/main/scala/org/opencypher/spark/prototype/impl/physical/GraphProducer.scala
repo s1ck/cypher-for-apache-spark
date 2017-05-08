@@ -165,6 +165,8 @@ class GraphProducer(context: RuntimeContext) {
 
       override def model: QueryModel[Expr] = graphModel
       override def details: SparkCypherRecords = graphRecords
+
+      override def toString = "CypherGraph@" + Integer.toHexString(hashCode)
     }
   }
 }
