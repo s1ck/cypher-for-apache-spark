@@ -23,6 +23,7 @@ import org.opencypher.caps.impl.record.{OpaqueField, ProjectedExpr, RecordHeader
 import org.opencypher.caps.impl.spark.physical.operators.PhysicalOperator.{assertIsNode, columnName, joinRecords}
 import org.opencypher.caps.impl.spark.physical.{PhysicalResult, RuntimeContext, udfUtils}
 import org.opencypher.caps.impl.spark.{CAPSRecords, ColumnNameGenerator}
+import org.opencypher.caps.impl.util.Measurement
 import org.opencypher.caps.ir.api.expr.{EndNode, Var}
 import org.opencypher.caps.logical.impl.{Directed, Direction, Undirected}
 
@@ -34,8 +35,12 @@ private[spark] abstract class TernaryPhysicalOperator extends PhysicalOperator {
 
   def third: PhysicalOperator
 
-  override def execute(implicit context: RuntimeContext): PhysicalResult =
-    executeTernary(first.execute, second.execute, third.execute)
+  override def execute(implicit context: RuntimeContext): PhysicalResult = {
+    val one = first.execute
+    val two = second.execute
+    val three = third.execute
+    Measurement.time(this.toString)(executeTernary(one, two, three))
+  }
 
   def executeTernary(first: PhysicalResult, second: PhysicalResult, third: PhysicalResult)(
       implicit context: RuntimeContext): PhysicalResult

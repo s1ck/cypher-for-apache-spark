@@ -20,6 +20,7 @@ import org.opencypher.caps.impl.record.{OpaqueField, RecordHeader, RecordSlot}
 import org.opencypher.caps.impl.spark.physical.operators.PhysicalOperator.{assertIsNode, columnName, joinDFs, joinRecords}
 import org.opencypher.caps.impl.spark.physical.{PhysicalResult, RuntimeContext}
 import org.opencypher.caps.impl.spark.{CAPSRecords, ColumnNameGenerator}
+import org.opencypher.caps.impl.util.Measurement
 import org.opencypher.caps.ir.api.expr.Var
 
 private[spark] abstract class BinaryPhysicalOperator extends PhysicalOperator {
@@ -28,7 +29,11 @@ private[spark] abstract class BinaryPhysicalOperator extends PhysicalOperator {
 
   def rhs: PhysicalOperator
 
-  override def execute(implicit context: RuntimeContext): PhysicalResult = executeBinary(lhs.execute, rhs.execute)
+  override def execute(implicit context: RuntimeContext): PhysicalResult = {
+    val left = lhs.execute
+    val right = rhs.execute
+    Measurement.time(this.toString)(executeBinary(left, right))
+  }
 
   def executeBinary(left: PhysicalResult, right: PhysicalResult)(implicit context: RuntimeContext): PhysicalResult
 }
@@ -243,7 +248,7 @@ final case class Union(lhs: PhysicalOperator, rhs: PhysicalOperator)
   override def executeBinary(left: PhysicalResult, right: PhysicalResult)(implicit context: RuntimeContext) = {
     val leftData = left.records.data
     // left and right have the same set of columns, but the order must also match
-    val rightData = right.records.data.select(leftData.columns.head, leftData.columns.tail: _*)
+    val rightData = Measurement.time("UNION: selecting columns")(right.records.data.select(leftData.columns.head, leftData.columns.tail: _*))
 
     val unionedData = leftData.union(rightData)
     val records = CAPSRecords.verifyAndCreate(header, unionedData)(left.records.caps)

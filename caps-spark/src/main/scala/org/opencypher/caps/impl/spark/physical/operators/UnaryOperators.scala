@@ -32,6 +32,7 @@ import org.opencypher.caps.impl.spark.physical.operators.PhysicalOperator.{asser
 import org.opencypher.caps.impl.spark.physical.{PhysicalResult, RuntimeContext, cypherFilter, udfUtils}
 import org.opencypher.caps.impl.spark.{CAPSGraph, CAPSRecords, SparkColumnName}
 import org.opencypher.caps.impl.syntax.RecordHeaderSyntax._
+import org.opencypher.caps.impl.util.Measurement
 import org.opencypher.caps.ir.api.block.{Asc, Desc, SortItem}
 import org.opencypher.caps.ir.api.expr._
 import org.opencypher.caps.ir.impl.convert.toJava
@@ -42,7 +43,10 @@ private[spark] abstract class UnaryPhysicalOperator extends PhysicalOperator {
 
   def in: PhysicalOperator
 
-  override def execute(implicit context: RuntimeContext): PhysicalResult = executeUnary(in.execute)
+  override def execute(implicit context: RuntimeContext): PhysicalResult = {
+    val unary = in.execute
+    Measurement.time(this.toString)(executeUnary(unary))
+  }
 
   def executeUnary(prev: PhysicalResult)(implicit context: RuntimeContext): PhysicalResult
 }
@@ -50,11 +54,20 @@ private[spark] abstract class UnaryPhysicalOperator extends PhysicalOperator {
 final case class Cache(in: PhysicalOperator) extends UnaryPhysicalOperator with InheritedHeader {
 
   override def executeUnary(prev: PhysicalResult)(implicit context: RuntimeContext): PhysicalResult = {
-    context.cache.getOrElse(in, {
-      prev.records.cache()
-      context.cache(in) = prev
+    val physicalResult = Measurement.time("cache lookup")(context.cache.get(in))
+
+    if (physicalResult.isEmpty) {
+      Measurement.time("prev.records.cache()")(prev.records.cache())
+      Measurement.time("context.cache(in) = prev)")(context.cache(in) = prev)
       prev
-    })
+    } else {
+      physicalResult.get
+    }
+//    context.cache.getOrElse(in, {
+//      prev.records.cache()
+//      context.cache(in) = prev
+//      prev
+//    })
   }
 
 }

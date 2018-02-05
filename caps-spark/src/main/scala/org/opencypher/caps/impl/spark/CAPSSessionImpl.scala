@@ -31,7 +31,8 @@ import org.opencypher.caps.impl.record.CypherRecords
 import org.opencypher.caps.impl.spark.CAPSConverters._
 import org.opencypher.caps.impl.spark.io.{CAPSGraphSourceHandler, CAPSPropertyGraphDataSource}
 import org.opencypher.caps.impl.spark.physical._
-import org.opencypher.caps.impl.util.parsePathOrURI
+import org.opencypher.caps.impl.util.Measurement.time
+import org.opencypher.caps.impl.util.{Measurement, parsePathOrURI}
 import org.opencypher.caps.ir.api.expr.{Expr, Var}
 import org.opencypher.caps.ir.api.{IRExternalGraph, IRField}
 import org.opencypher.caps.ir.impl.parse.CypherParser
@@ -92,17 +93,17 @@ sealed class CAPSSessionImpl(val sparkSession: SparkSession, private val graphSo
     val allParameters = queryParameters ++ extractedParameters
 
     logStageProgress("IR ...", false)
-    val ir = IRBuilder(stmt)(IRBuilderContext.initial(query, allParameters, semState, ambientGraph, sourceAt))
+    val ir = time("IR ...")(IRBuilder(stmt)(IRBuilderContext.initial(query, allParameters, semState, ambientGraph, sourceAt)))
     logStageProgress("Done!")
 
     logStageProgress("Logical plan ...", false)
     val logicalPlannerContext =
       LogicalPlannerContext(graph.schema, Set.empty, ir.model.graphs.andThen(sourceAt), ambientGraph)
-    val logicalPlan = logicalPlanner(ir)(logicalPlannerContext)
+    val logicalPlan = time("Logical plan ...")(logicalPlanner(ir)(logicalPlannerContext))
     logStageProgress("Done!")
 
     logStageProgress("Optimizing logical plan ...", false)
-    val optimizedLogicalPlan = logicalOptimizer(logicalPlan)(logicalPlannerContext)
+    val optimizedLogicalPlan = time("Optimizing logical plan ...")(logicalOptimizer(logicalPlan)(logicalPlannerContext))
     logStageProgress("Done!")
 
     if (PrintLogicalPlan.get()) {
@@ -199,13 +200,13 @@ sealed class CAPSSessionImpl(val sparkSession: SparkSession, private val graphSo
                     records: CypherRecords,
                     parameters: Map[String, CypherValue],
                     logicalPlan: LogicalOperator): CAPSResult = {
-    logStageProgress("Flat plan ... ", false)
-    val flatPlan = flatPlanner(logicalPlan)(FlatPlannerContext(parameters))
+    logStageProgress("Flat plan ...", false)
+    val flatPlan = time("Flat plan ... ")(flatPlanner(logicalPlan)(FlatPlannerContext(parameters)))
     logStageProgress("Done!")
 
     logStageProgress("Physical plan ... ", false)
     val physicalPlannerContext = PhysicalPlannerContext.from(readFrom, records.asCaps, parameters)
-    val physicalPlan = physicalPlanner(flatPlan)(physicalPlannerContext)
+    val physicalPlan = time("Physical plan ... ")(physicalPlanner(flatPlan)(physicalPlannerContext))
     logStageProgress("Done!")
 
     if (PrintPhysicalPlan.get()) {
@@ -214,7 +215,7 @@ sealed class CAPSSessionImpl(val sparkSession: SparkSession, private val graphSo
     }
 
     logStageProgress("Optimizing physical plan ... ", false)
-    val optimizedPhysicalPlan = physicalOptimizer(physicalPlan)(PhysicalOptimizerContext())
+    val optimizedPhysicalPlan = time("Physical plan ... ")(physicalOptimizer(physicalPlan)(PhysicalOptimizerContext()))
     logStageProgress("Done!")
 
     if (PrintPhysicalPlan.get()) {
@@ -222,8 +223,8 @@ sealed class CAPSSessionImpl(val sparkSession: SparkSession, private val graphSo
       println(optimizedPhysicalPlan.pretty())
     }
 
-    CAPSResultBuilder.from(logicalPlan, flatPlan, optimizedPhysicalPlan)(
-      RuntimeContext(physicalPlannerContext.parameters, optGraphAt, collection.mutable.Map.empty))
+    time("CAPSResultBuilder")(CAPSResultBuilder.from(logicalPlan, flatPlan, optimizedPhysicalPlan)(
+      RuntimeContext(physicalPlannerContext.parameters, optGraphAt, collection.mutable.Map.empty)))
   }
 
   override def toString: String = {

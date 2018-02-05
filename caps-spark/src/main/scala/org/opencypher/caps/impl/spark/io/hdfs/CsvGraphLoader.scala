@@ -29,6 +29,7 @@ import org.opencypher.caps.api.exception.IllegalArgumentException
 import org.opencypher.caps.api.graph.PropertyGraph
 import org.opencypher.caps.api.io.conversion.{NodeMapping, RelationshipMapping}
 import org.opencypher.caps.api.schema.{NodeTable, RelationshipTable}
+import org.opencypher.caps.impl.util.Measurement
 
 trait CsvGraphLoaderFileHandler {
   def location: String
@@ -106,7 +107,7 @@ class CsvGraphLoader(fileHandler: CsvGraphLoaderFileHandler)(implicit capsSessio
 
   private val sparkSession: SparkSession = capsSession.sparkSession
 
-  def load: PropertyGraph = capsSession.readFrom(loadNodes ++ loadRels: _*)
+  def load: PropertyGraph = Measurement.time("CsvGraphLoader.load")(capsSession.readFrom(loadNodes ++ loadRels: _*))
 
   private def loadNodes: List[NodeTable] = {
     val csvFiles = listCsvFiles("nodes").toList

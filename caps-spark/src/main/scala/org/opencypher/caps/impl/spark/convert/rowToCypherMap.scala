@@ -20,15 +20,16 @@ import org.opencypher.caps.api.types.{CTNode, CTRelationship}
 import org.opencypher.caps.api.value.{CAPSMap, CAPSNode, CAPSRelationship, CAPSValue}
 import org.opencypher.caps.impl.record.RecordHeader
 import org.opencypher.caps.impl.spark.SparkColumnName
+import org.opencypher.caps.impl.util.Measurement
 import org.opencypher.caps.ir.api.expr.Var
 
 final case class rowToCypherMap(header: RecordHeader) extends (Row => CAPSMap) {
   override def apply(row: Row): CAPSMap = {
-    val values = header.internalHeader.fields.map { field =>
+    val values = Measurement.time(s"construct values for row: $row")(header.internalHeader.fields.map { field =>
       field.name -> constructValue(row, field)
-    }.toSeq
+    }.toSeq)
 
-    CAPSMap(values: _*)
+    Measurement.time("constructing CAPSMap")(CAPSMap(values: _*))
   }
 
   private def constructValue(row: Row, field: Var): CAPSValue = {

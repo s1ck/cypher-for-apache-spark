@@ -15,7 +15,11 @@
  */
 package org.opencypher.caps.demo
 
+import org.apache.spark.scheduler.{SparkListener, SparkListenerStageCompleted}
 import org.opencypher.caps.api.CAPSSession
+import org.opencypher.caps.impl.util.Measurement
+
+import org.opencypher.caps.impl.spark.CAPSConverters._
 
 /**
   * Demonstrates multiple graph capabilities by loading a social network from case class objects and a purchase network
@@ -25,6 +29,12 @@ import org.opencypher.caps.api.CAPSSession
 object MultipleGraphExample extends App {
   // 1) Create CAPS session
   implicit val session = CAPSSession.local()
+
+  session.sparkSession.sparkContext.addSparkListener(new SparkListener {
+    override def onStageCompleted(event: SparkListenerStageCompleted) = {
+      println(s"${event.stageInfo.name} took ${event.stageInfo.completionTime.getOrElse(0)} ms")
+    }
+  })
 
   // 2) Load social network data via case class instances
   val socialNetwork = session.readFrom(SocialNetworkData.persons, SocialNetworkData.friendships)
@@ -55,5 +65,6 @@ object MultipleGraphExample extends App {
        |RETURN DISTINCT product.title AS recommendation, person.name AS for
     """.stripMargin)
 
-  recommendations.print
+//  Measurement.time("count")(recommendations.asCaps.records.data.count())
+  Measurement.time("print")(recommendations.print)
 }

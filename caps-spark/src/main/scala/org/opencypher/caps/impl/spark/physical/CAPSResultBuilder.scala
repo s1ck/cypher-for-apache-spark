@@ -19,13 +19,14 @@ import org.opencypher.caps.api.graph.{CypherResultPlan, Plan}
 import org.opencypher.caps.impl.flat.FlatOperator
 import org.opencypher.caps.impl.spark.physical.operators.PhysicalOperator
 import org.opencypher.caps.impl.spark.{CAPSGraph, CAPSRecords, CAPSResult}
+import org.opencypher.caps.impl.util.Measurement
 import org.opencypher.caps.logical.impl.LogicalOperator
 
 object CAPSResultBuilder {
   def from(logical: LogicalOperator, flat: FlatOperator, physical: PhysicalOperator)(
       implicit context: RuntimeContext): CAPSResult = {
     new CAPSResult {
-      lazy val result: PhysicalResult = physical.execute
+      lazy val result: PhysicalResult = Measurement.time("physical.execute")(physical.execute)
 
       override def records: CAPSRecords = result.records
 
