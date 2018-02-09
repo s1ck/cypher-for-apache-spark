@@ -15,13 +15,13 @@
  */
 package org.opencypher.caps.api.schema
 
-import org.apache.spark.sql.DataFrame
+import org.apache.spark.sql.{Column, DataFrame}
 import org.apache.spark.storage.StorageLevel
 import org.opencypher.caps.api.CAPSSession
 import org.opencypher.caps.api.exception.IllegalArgumentException
 import org.opencypher.caps.api.io.conversion.{EntityMapping, NodeMapping, RelationshipMapping}
+import org.opencypher.caps.api.schema.CoraEntityTable._
 import org.opencypher.caps.api.schema.Entity.sourceIdKey
-import org.opencypher.caps.api.schema.EntityTable._
 import org.opencypher.caps.api.types._
 import org.opencypher.caps.api.value.CypherValue
 import org.opencypher.caps.api.value.CypherValue.CypherValue
@@ -29,18 +29,66 @@ import org.opencypher.caps.impl.record.CypherTable
 import org.opencypher.caps.impl.spark._
 import org.opencypher.caps.impl.spark.convert.SparkUtils
 import org.opencypher.caps.impl.util.Annotation
+import org.opencypher.caps.ir.api.expr.{Expr, Var}
 
 import scala.collection.JavaConverters._
-import scala.reflect.runtime.universe._
+import scala.reflect.runtime.universe.TypeTag
 
-trait CAPSEntityTable extends EntityTable[SparkTable] {
+trait CAPSEntityTable extends CoraEntityTable[SparkTable] {
   // TODO: create CTEntity type
   private[caps] def entityType: CypherType with DefiniteCypherType = mapping.cypherType
 
   private[caps] def records(implicit caps: CAPSSession): CAPSRecords = CAPSRecords.create(this)
 }
 
-case class CAPSNodeTable(mapping: NodeMapping, table: SparkTable) extends NodeTable(mapping, table) with CAPSEntityTable
+case class SuperMapping(
+  nodeMapping: Map[Var, NodeMapping],
+  relMapping: Map[Var, RelationshipMapping],
+  exprMapping: Map[Expr, String]) {
+
+  def keySet: Set[Expr] = ???
+
+  def column(expr: Expr): Option[String] =
+  // TODO: check if expr can be solved with node or expr mapping
+    exprMapping.get(expr)
+
+  def flatten: Map[Expr, String] = ???
+}
+
+abstract class HighLevelTable() extends CypherTable[Expr] {
+
+  // Var(n)(CTNode) -> source id Column
+  //
+  def mapping: SuperMapping
+
+  override def columns: Set[Expr] = mapping.keySet
+
+  override def columnType: Map[Expr, CypherType] = columns.map(e => e -> e.cypherType).toMap
+
+  /**
+    * Iterator over the rows in this table.
+    */
+  override def rows: Iterator[Expr => CypherValue] = ???
+
+  /**
+    * @return number of rows in this Table.
+    */
+  override def size: Long = ???
+}
+
+case class CAPSNodeTable(mapping: SuperMapping, table: SparkTable) extends NodeTable(mapping, table) with CAPSEntityTable {
+
+  /*
+
+  MATCH (n)
+  RETURN n.age AS foo, n.age as bar, 2 + 2 AS res
+
+  Var(bar), Var(foo) -> n.age
+   */
+
+  def columnFor(expr: Expr): Column = table.df.col(mapping.column(expr))
+
+}
 
 object CAPSNodeTable {
 
@@ -84,7 +132,7 @@ object CAPSRelationshipTable {
 /**
   * An entity table describes how to map an input data frame to a Cypher entity (i.e. nodes or relationships).
   */
-sealed trait EntityTable[T <: CypherTable] {
+sealed trait CoraEntityTable[ColumnKey, T <: CypherTable[ColumnKey]] {
 
   verify()
 
@@ -102,9 +150,9 @@ sealed trait EntityTable[T <: CypherTable] {
 
 }
 
-object EntityTable {
+object CoraEntityTable {
 
-  implicit class SparkTable(val df: DataFrame) extends CypherTable {
+  implicit class SparkTable(val df: DataFrame) extends CypherTable[String] {
 
     override def columns: Set[String] = df.columns.toSet
 
@@ -115,6 +163,11 @@ object EntityTable {
     }
 
     override def size: Long = df.size
+
+    def evaluate(expr: Expr)(implicit exprMapping: Map[Expr, String]): Column = exprMapping.get(expr) match {
+      case Some(columnName) => df.col(columnName)
+      case None => ??? // TODO: logic from SparkSQLExprMapper.column / asSparkSQLExpr
+    }
 
     def cache(): SparkTable = df.cache()
 
@@ -136,7 +189,7 @@ object EntityTable {
   * @param mapping mapping from input data description to a Cypher node
   * @param table   input data frame
   */
-abstract class NodeTable[T <: CypherTable](mapping: NodeMapping, table: T) extends EntityTable[T] {
+abstract class NodeTable[T <: CypherTable](mapping: NodeMapping, table: T) extends CoraEntityTable[T] {
 
   override lazy val schema: Schema = {
     val propertyKeys = mapping.propertyMapping.toSeq.map {
@@ -167,7 +220,7 @@ abstract class NodeTable[T <: CypherTable](mapping: NodeMapping, table: T) exten
   * @param mapping mapping from input data description to a Cypher relationship
   * @param table   input data frame
   */
-abstract class RelationshipTable[T <: CypherTable](mapping: RelationshipMapping, table: T) extends EntityTable[T] {
+abstract class RelationshipTable[T <: CypherTable](mapping: RelationshipMapping, table: T) extends CoraEntityTable[T] {
 
   override lazy val schema: Schema = {
     val relTypes = mapping.relTypeOrSourceRelTypeKey match {
