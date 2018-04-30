@@ -8,7 +8,9 @@ import org.apache.spark.sql.DataFrame
 import org.opencypher.okapi.api.graph.{GraphName, PropertyGraph}
 import org.opencypher.okapi.api.schema.Schema
 import org.opencypher.okapi.api.types.CTRelationship
+import org.opencypher.spark.api.io.{CAPSNodeTable, CAPSRelationshipTable}
 import org.opencypher.spark.impl.CAPSConverters._
+import org.opencypher.spark.impl.CAPSGraph
 import org.opencypher.spark.impl.io.CAPSPropertyGraphDataSource
 import org.opencypher.spark.impl.io.hdfs.CAPSGraphMetaData
 import org.opencypher.spark.schema.CAPSSchema
@@ -20,8 +22,18 @@ abstract class FileBasedGraphDataSource extends CAPSPropertyGraphDataSource {
   override def hasGraph(name: GraphName): Boolean =
     fs.hasGraph(name)
 
-  override def graph(name: GraphName): PropertyGraph = {
-    ???
+  override def graph(graphName: GraphName): PropertyGraph = {
+    val schema: CAPSSchema = fs.readSchema(graphName)
+
+    val nodeTables = schema.allLabelCombinations.map { combo =>
+      CAPSNodeTable(combo, fs.readNodeTable(graphName, combo))
+    }
+
+    val relTables = schema.relationshipTypes.map { relType =>
+      CAPSRelationshipTable(relType, fs.readRelTable(graphName, relType))
+    }
+
+    CAPSGraph.create(nodeTables.head, (nodeTables.tail ++ relTables).toSeq: _*)
   }
 
   override def schema(name: GraphName): Option[Schema] =
@@ -50,10 +62,9 @@ abstract class FileBasedGraphDataSource extends CAPSPropertyGraphDataSource {
     }
   }
 
-  override def delete(name: GraphName): Unit = ???
+  override def delete(graphName: GraphName): Unit = fs.deleteGraph(graphName)
 
-  override def graphNames: Set[GraphName] =
-    fs.listGraphs
+  override def graphNames: Set[GraphName] = fs.listGraphs
 }
 
 
@@ -61,18 +72,23 @@ trait FileSystemAdapter {
 
   val rootPath: String
 
-  def listDirectories(path: String): Set[String]
+  protected def listDirectories(path: String): Set[String]
 
-  def readFile(path: String): String
+  protected def readFile(path: String): String
 
-  def writeFile(path: String, content: String): Unit
+  protected def writeFile(path: String, content: String): Unit
 
-  def readTable: DataFrame
+  protected def readTable(path: String): DataFrame
 
-  def writeTable(path: String, table: DataFrame): Unit
+  protected def writeTable(path: String, table: DataFrame): Unit
+
+  protected def deleteDirectory(path: String): Unit
 
   def listGraphs: Set[GraphName] =
     listDirectories(rootPath).map(GraphName)
+
+  def deleteGraph(graphName: GraphName): Unit =
+    deleteDirectory(graphPath(graphName))
 
   def hasGraph(graphName: GraphName): Boolean =
     listGraphs.contains(graphName)
@@ -90,15 +106,30 @@ trait FileSystemAdapter {
     writeFile(graphPath(graph), schema.asJson.toString)
 
   def writeNodeTable(graphName: GraphName, labels: Set[String], table: DataFrame): Unit =
-    writeTable(graphName, Paths.get("nodes", labels.toSeq.sorted.mkString("_")).toString, table)
+    writeTable(graphName, nodePath(labels), table)
+
+  def readNodeTable(graphName: GraphName, labels: Set[String]): DataFrame =
+    readTable(graphName, nodePath(labels))
 
   def writeRelTable(graphName: GraphName, relType: String, table: DataFrame): Unit =
-    writeTable(graphName, Paths.get("relationships", relType).toString, table)
+    writeTable(graphName, relPath(relType), table)
 
-  def writeTable(graphName: GraphName, path: String, table: DataFrame): Unit =
+  def readRelTable(graphName: GraphName, relType: String): DataFrame =
+    readTable(graphName, relPath(relType))
+
+  private def writeTable(graphName: GraphName, path: String, table: DataFrame): Unit =
     writeTable(Paths.get(graphPath(graphName), path).toString, table)
+
+  private def readTable(graphName: GraphName, path: String): DataFrame =
+    readTable(Paths.get(graphPath(graphName), path).toString)
 
   private def graphPath(graphName: GraphName): String =
     Paths.get(rootPath, graphName.value).toString
+
+  private def nodePath(labels: Set[String]): String =
+    Paths.get("nodes", labels.toSeq.sorted.mkString("_")).toString
+
+  private def relPath(relType: String): String =
+    Paths.get("relationships", relType).toString
 
 }
