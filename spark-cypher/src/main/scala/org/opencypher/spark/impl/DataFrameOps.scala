@@ -136,6 +136,12 @@ object DataFrameOps {
       }
     }
 
+    def setNonNullable(cols: Set[String]): DataFrame = {
+      cols.foldLeft(df) {
+        case (currentDF, colName) => currentDF.setNonNullable(colName)
+      }
+    }
+
     def safeReplaceTags(columnName: String, replacements: Map[Int, Int]): DataFrame = {
       val dataType = structFieldForColumn(columnName).dataType
       require(dataType == LongType, s"Cannot remap long values in Column with type $dataType")

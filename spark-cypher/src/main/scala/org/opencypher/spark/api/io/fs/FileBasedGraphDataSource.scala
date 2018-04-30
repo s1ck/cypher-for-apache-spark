@@ -8,9 +8,10 @@ import org.apache.spark.sql.DataFrame
 import org.opencypher.okapi.api.graph.{GraphName, PropertyGraph}
 import org.opencypher.okapi.api.schema.Schema
 import org.opencypher.okapi.api.types.CTRelationship
-import org.opencypher.spark.api.io.{CAPSNodeTable, CAPSRelationshipTable}
+import org.opencypher.spark.api.io.{CAPSNodeTable, CAPSRelationshipTable, GraphEntity, Relationship}
 import org.opencypher.spark.impl.CAPSConverters._
 import org.opencypher.spark.impl.CAPSGraph
+import org.opencypher.spark.impl.DataFrameOps._
 import org.opencypher.spark.impl.io.CAPSPropertyGraphDataSource
 import org.opencypher.spark.impl.io.hdfs.CAPSGraphMetaData
 import org.opencypher.spark.schema.CAPSSchema
@@ -26,11 +27,21 @@ abstract class FileBasedGraphDataSource extends CAPSPropertyGraphDataSource {
     val schema: CAPSSchema = fs.readSchema(graphName)
 
     val nodeTables = schema.allLabelCombinations.map { combo =>
-      CAPSNodeTable(combo, fs.readNodeTable(graphName, combo))
+      val nonNullableProperties = schema.keysFor(Set(combo)).filterNot {
+        case (_, cypherType) => cypherType.isNullable
+      }.keySet
+      val df = fs.readNodeTable(graphName, combo)
+      val nonNullableColumns = nonNullableProperties + GraphEntity.sourceIdKey
+      CAPSNodeTable(combo, df.setNonNullable(nonNullableColumns))
     }
 
     val relTables = schema.relationshipTypes.map { relType =>
-      CAPSRelationshipTable(relType, fs.readRelTable(graphName, relType))
+      val nonNullableProperties = schema.relationshipKeys(relType).filterNot {
+        case (_, cypherType) => cypherType.isNullable
+      }.keySet
+      val df = fs.readRelTable(graphName, relType)
+      val nonNullableColumns = nonNullableProperties ++ Relationship.nonPropertyAttributes
+      CAPSRelationshipTable(relType, df.setNonNullable(nonNullableColumns))
     }
 
     CAPSGraph.create(nodeTables.head, (nodeTables.tail ++ relTables).toSeq: _*)
