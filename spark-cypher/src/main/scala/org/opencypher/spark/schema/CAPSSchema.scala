@@ -26,16 +26,32 @@
  */
 package org.opencypher.spark.schema
 
+import io.circe.Decoder
 import org.opencypher.okapi.api.schema.PropertyKeys.PropertyKeys
 import org.opencypher.okapi.api.schema.{LabelPropertyMap, RelTypePropertyMap, Schema}
-import org.opencypher.okapi.api.types.{CTRelationship, CypherType}
+import org.opencypher.okapi.api.types._
 import org.opencypher.okapi.impl.exception.{SchemaException, UnsupportedOperationException}
 import org.opencypher.okapi.impl.schema.SchemaUtils._
-import org.opencypher.okapi.impl.schema.{ImpliedLabels, LabelCombinations}
+import org.opencypher.okapi.impl.schema.{ImpliedLabels, LabelCombinations, SchemaImpl}
 import org.opencypher.spark.impl.convert.CAPSCypherType._
+import org.opencypher.spark.impl.io.hdfs.{CAPSGraphMetaData, JsonUtils}
+import io.circe._
+import io.circe.generic.semiauto._
+
 
 object CAPSSchema {
+
+
+  implicit val decodeLabelPropertMap: Decoder[LabelPropertyMap] = deriveDecoder[LabelPropertyMap]
+  implicit val decodeRelTypePropertyMap: Decoder[RelTypePropertyMap] = deriveDecoder[RelTypePropertyMap]
+  implicit val decodeSchemaImpl: Decoder[SchemaImpl] = deriveDecoder[SchemaImpl]
+
   val empty: CAPSSchema = Schema.empty.asCaps
+
+  def apply(schemaJson: String): CAPSSchema = {
+    JsonUtils.parseJson(schemaJson)
+  }
+
 
   implicit class CAPSSchemaConverter(schema: Schema) {
 

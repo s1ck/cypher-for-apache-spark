@@ -50,11 +50,11 @@ trait CsvFileHandler {
 
   def readSchemaFile(path: URI): String
 
-  def readMetaData(fileName: String): CsvGraphMetaData
+  def readMetaData(fileName: String): CAPSGraphMetaData
 
   def writeSchemaFile(directory: String, filename: String, jsonSchema: String): Unit
 
-  def writeMetaData(fileName: String, metaData: CsvGraphMetaData): Unit
+  def writeMetaData(fileName: String, metaData: CAPSGraphMetaData): Unit
 
   def exists(path: String): Boolean
 }
@@ -80,16 +80,16 @@ final class HadoopFileHandler(override val graphLocation: URI, private val hadoo
     readFile(schemaPath)
   }
 
-  override def readMetaData(fileName: String): CsvGraphMetaData = {
+  override def readMetaData(fileName: String): CAPSGraphMetaData = {
     val graphDirectory = graphLocation.getPath
     val metaDataPath = new Path(graphDirectory, fileName)
-    CsvGraphMetaData(readFile(metaDataPath))
+    CAPSGraphMetaData(readFile(metaDataPath))
   }
 
   override def writeSchemaFile(directory: String, filename: String, jsonSchema: String): Unit =
     writeFile(new Path(new Path(graphLocation.getPath, directory), filename), jsonSchema)
 
-  override def writeMetaData(fileName: String, metaData: CsvGraphMetaData): Unit =
+  override def writeMetaData(fileName: String, metaData: CAPSGraphMetaData): Unit =
     writeFile(new Path(graphLocation.getPath, fileName), metaData.asJson.toString())
 
   private def writeFile(path: Path, content: String): Unit = {
@@ -139,16 +139,16 @@ final class LocalFileHandler(override val graphLocation: URI) extends CsvFileHan
     new String(Files.readAllBytes(schemaPath))
   }
 
-  override def readMetaData(fileName: String): CsvGraphMetaData = {
+  override def readMetaData(fileName: String): CAPSGraphMetaData = {
     val graphDirectory = graphLocation.getPath
     val metaDataPath = Paths.get(graphDirectory, fileName)
-    CsvGraphMetaData(new String(Files.readAllBytes(metaDataPath)))
+    CAPSGraphMetaData(new String(Files.readAllBytes(metaDataPath)))
   }
 
   override def writeSchemaFile(directory: String, filename: String, jsonSchema: String): Unit =
     writeFile(Paths.get(graphLocation.getPath, directory, filename), jsonSchema)
 
-  override def writeMetaData(fileName: String, metaData: CsvGraphMetaData): Unit =
+  override def writeMetaData(fileName: String, metaData: CAPSGraphMetaData): Unit =
     writeFile(Paths.get(graphLocation.getPath, fileName), metaData.asJson.toString())
 
   private def writeFile(path: java.nio.file.Path, content: String): Unit = {

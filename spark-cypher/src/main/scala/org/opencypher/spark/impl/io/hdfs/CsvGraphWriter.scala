@@ -52,7 +52,7 @@ class CsvGraphWriter(graph: PropertyGraph, fileHandler: CsvFileHandler)(implicit
   }
 
   private def writeMetaData(): Unit =
-    fileHandler.writeMetaData(METADATA_FILE, CsvGraphMetaData(graph.asCaps.tags))
+    fileHandler.writeMetaData(METADATA_FILE, CAPSGraphMetaData(graph.asCaps.tags))
 
   private def writeNodes(): Unit = {
     schema.labelCombinations.combos.foreach { labelCombination =>

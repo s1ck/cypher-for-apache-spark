@@ -164,7 +164,7 @@ object CsvNodeSchema {
   } yield new CsvNodeSchema(idField, implicitLabels, optionalLabels, propertyFields)
 
   def apply(schemaJson: String): CsvNodeSchema = {
-    CsvJsonUtils.parseJson(schemaJson)
+    JsonUtils.parseJson(schemaJson)
   }
 }
 
@@ -227,6 +227,6 @@ object CsvRelSchema {
   } yield new CsvRelSchema(id, startIdField, endIdField, relType, propertyFields)
 
   def apply(schemaJson: String): CsvRelSchema = {
-    CsvJsonUtils.parseJson(schemaJson)
+    JsonUtils.parseJson(schemaJson)
   }
 }

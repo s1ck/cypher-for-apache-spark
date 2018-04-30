@@ -27,18 +27,23 @@
 package org.opencypher.spark.impl.io.hdfs
 
 import io.circe.Decoder
+import io.circe.parser.parse
 
-case class CsvGraphMetaData(tags: Set[Int] = Set(0))
-
-object CsvGraphMetaData {
-
-  implicit val decodeCsvGraphMetaData: Decoder[CsvGraphMetaData] = for {
-    tags <- Decoder.instance(_.getOrElse[Set[Int]]("tags")(Set()))
-  } yield new CsvGraphMetaData(tags)
-
-  def apply(schemaJson: String): CsvGraphMetaData = {
-    CsvJsonUtils.parseJson(schemaJson)
+// TODO: test
+// TODO: move to fitting package
+object JsonUtils {
+  def parseJson[T](jsonString: String)(implicit decoder: Decoder[T]): T = {
+    parse(jsonString) match {
+      case Left(failure) => throw new RuntimeException(s"Invalid json file: $failure")
+      case Right(json) =>
+        json.hcursor.as[T] match {
+          case Left(failure) => {
+            val msg =
+              s"Invalid JSON schema: Could not find mandatory element '${failure.history.head.productElement(0)}'"
+            throw new RuntimeException(msg)
+          }
+          case Right(elem) => elem
+        }
+    }
   }
-
-  def empty: CsvGraphMetaData = CsvGraphMetaData()
 }

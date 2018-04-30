@@ -83,12 +83,12 @@ class CsvGraphLoader(fileHandler: CsvFileHandler)(implicit capsSession: CAPSSess
     val metaData = if (fileHandler.exists(Paths.get(fileHandler.graphLocation.getPath, NODES_DIRECTORY).toString)) {
       loadMetaData
     } else {
-      CsvGraphMetaData.empty
+      CAPSGraphMetaData.empty
     }
     capsSession.readFrom(metaData.tags, nodeTables.head, nodeTables.tail ++ relTables: _*)
   }
 
-  private def loadMetaData: CsvGraphMetaData =
+  private def loadMetaData: CAPSGraphMetaData =
     fileHandler.readMetaData(METADATA_FILE)
 
   private def loadNodes: List[CAPSNodeTable] = {
