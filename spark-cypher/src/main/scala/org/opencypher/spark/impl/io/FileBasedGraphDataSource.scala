@@ -1,4 +1,4 @@
-package org.opencypher.spark.api.io.fs
+package org.opencypher.spark.impl.io
 
 import java.nio.file.Paths
 
@@ -12,7 +12,6 @@ import org.opencypher.spark.api.io.{CAPSNodeTable, CAPSRelationshipTable, GraphE
 import org.opencypher.spark.impl.CAPSConverters._
 import org.opencypher.spark.impl.CAPSGraph
 import org.opencypher.spark.impl.DataFrameOps._
-import org.opencypher.spark.impl.io.CAPSPropertyGraphDataSource
 import org.opencypher.spark.impl.io.hdfs.CAPSGraphMetaData
 import org.opencypher.spark.schema.CAPSSchema
 
@@ -25,8 +24,7 @@ abstract class FileBasedGraphDataSource extends CAPSPropertyGraphDataSource {
 
   override def graph(graphName: GraphName): PropertyGraph = {
     val schema: CAPSSchema = fs.readSchema(graphName)
-
-    val capsMetaData = fs.readCAPSMetaData(graphName)
+    val capsMetaData: CAPSGraphMetaData = fs.readCAPSGraphMetaData(graphName)
 
     val nodeTables = schema.allLabelCombinations.map { combo =>
       val nonNullableProperties = schema.keysFor(Set(combo)).filterNot {
@@ -55,20 +53,14 @@ abstract class FileBasedGraphDataSource extends CAPSPropertyGraphDataSource {
   override def store(name: GraphName, graph: PropertyGraph): Unit = {
     val capsGraph = graph.asCaps
     val schema = capsGraph.schema
-
-    // graph meta data
-    fs.writeCAPSMetaData(name, CAPSGraphMetaData(capsGraph.tags))
-
-    // schema
+    fs.writeCAPSGraphMetaData(name, CAPSGraphMetaData(capsGraph.tags))
     fs.writeSchema(name, schema)
 
-    // nodes
     schema.labelCombinations.combos.foreach { combo =>
       val nodes = capsGraph.nodesWithExactLabels("n", combo)
       fs.writeNodeTable(name, combo, nodes.data)
     }
 
-    // rels
     schema.relationshipTypes.foreach { relType =>
       val rels = capsGraph.relationships("r", CTRelationship(relType))
       fs.writeRelTable(name, relType, rels.data)
@@ -106,10 +98,10 @@ trait FileSystemAdapter {
   def hasGraph(graphName: GraphName): Boolean =
     listGraphs.contains(graphName)
 
-  def readCAPSMetaData(graph: GraphName): CAPSGraphMetaData =
+  def readCAPSGraphMetaData(graph: GraphName): CAPSGraphMetaData =
     CAPSGraphMetaData(readFile(graphPath(graph)))
 
-  def writeCAPSMetaData(graph: GraphName, metaData: CAPSGraphMetaData): Unit =
+  def writeCAPSGraphMetaData(graph: GraphName, metaData: CAPSGraphMetaData): Unit =
     writeFile(graphPath(graph), metaData.asJson.toString())
 
   def readSchema(graph: GraphName): CAPSSchema =
