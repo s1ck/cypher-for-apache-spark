@@ -26,6 +26,8 @@ abstract class FileBasedGraphDataSource extends CAPSPropertyGraphDataSource {
   override def graph(graphName: GraphName): PropertyGraph = {
     val schema: CAPSSchema = fs.readSchema(graphName)
 
+    val capsMetaData = fs.readCAPSMetaData(graphName)
+
     val nodeTables = schema.allLabelCombinations.map { combo =>
       val nonNullableProperties = schema.keysFor(Set(combo)).filterNot {
         case (_, cypherType) => cypherType.isNullable
@@ -44,7 +46,7 @@ abstract class FileBasedGraphDataSource extends CAPSPropertyGraphDataSource {
       CAPSRelationshipTable(relType, df.setNonNullable(nonNullableColumns))
     }
 
-    CAPSGraph.create(nodeTables.head, (nodeTables.tail ++ relTables).toSeq: _*)
+    CAPSGraph.create(capsMetaData.tags, nodeTables.head, (nodeTables.tail ++ relTables).toSeq: _*)
   }
 
   override def schema(name: GraphName): Option[Schema] =
