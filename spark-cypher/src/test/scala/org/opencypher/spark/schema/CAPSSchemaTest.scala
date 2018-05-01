@@ -26,14 +26,12 @@
  */
 package org.opencypher.spark.schema
 
-import io.circe.Decoder.Result
 import io.circe.syntax._
 import org.opencypher.okapi.api.schema.Schema
 import org.opencypher.okapi.api.types._
 import org.opencypher.okapi.impl.exception.SchemaException
 import org.opencypher.okapi.testing.BaseTestSuite
 import org.opencypher.spark.schema.CAPSSchema._
-
 
 class CAPSSchemaTest extends BaseTestSuite {
 

@@ -4,10 +4,12 @@ import java.nio.file.Paths
 
 import io.circe.Decoder.Result
 import org.apache.spark.sql.DataFrame
+import org.apache.spark.sql.types.{LongType, StructField, StructType}
 import org.opencypher.okapi.api.graph.{GraphName, PropertyGraph}
 import org.opencypher.okapi.api.schema.PropertyKeys.PropertyKeys
 import org.opencypher.okapi.api.schema.{LabelPropertyMap, RelTypePropertyMap, Schema}
 import org.opencypher.okapi.api.types.{CTRelationship, CypherType}
+import org.opencypher.okapi.impl.exception.GraphNotFoundException
 import org.opencypher.okapi.impl.schema.SchemaImpl
 import org.opencypher.okapi.ir.api.expr.Var
 import org.opencypher.okapi.relational.impl.table.ColumnName
@@ -20,37 +22,41 @@ import org.opencypher.spark.impl.io.CAPSGraphExport._
 import org.opencypher.spark.impl.io.hdfs.{CAPSGraphMetaData, JsonUtils}
 import org.opencypher.spark.schema.CAPSSchema
 
+import scala.util.Try
+
+// TODO: Lazily cache graph schemas
 abstract class FileBasedGraphDataSource extends CAPSPropertyGraphDataSource {
 
-  implicit val caps: CAPSSession
+  implicit val session: CAPSSession
   val fs: FileSystemAdapter
 
-  override def hasGraph(name: GraphName): Boolean =
-    fs.hasGraph(name)
+  override def hasGraph(name: GraphName): Boolean = fs.hasGraph(name)
 
   override def graph(graphName: GraphName): PropertyGraph = {
-    val schema: CAPSSchema = fs.readSchema(graphName)
-    val capsMetaData: CAPSGraphMetaData = fs.readCAPSGraphMetaData(graphName)
+    Try {
+      val schema: CAPSSchema = fs.readSchema(graphName)
+      val capsMetaData: CAPSGraphMetaData = fs.readCAPSGraphMetaData(graphName)
 
-    val nodeTables = schema.allLabelCombinations.map { combo =>
-      val nonNullableProperties = schema.keysFor(Set(combo)).filterNot {
-        case (_, cypherType) => cypherType.isNullable
-      }.keySet
-      val df = fs.readNodeTable(graphName, combo)
-      val nonNullableColumns = nonNullableProperties + GraphEntity.sourceIdKey
-      CAPSNodeTable(combo, df.setNonNullable(nonNullableColumns))
-    }
+      val nodeTables = schema.allLabelCombinations.map { combo =>
+        val nonNullableProperties = schema.keysFor(Set(combo)).filterNot {
+          case (_, cypherType) => cypherType.isNullable
+        }.keySet
+        val nonNullableColumns = nonNullableProperties + GraphEntity.sourceIdKey
+        val df = fs.readNodeTable(graphName, combo, schema.nodeTableSchema(combo))
+        CAPSNodeTable(combo, df.setNonNullable(nonNullableColumns))
+      }
 
-    val relTables = schema.relationshipTypes.map { relType =>
-      val nonNullableProperties = schema.relationshipKeys(relType).filterNot {
-        case (_, cypherType) => cypherType.isNullable
-      }.keySet
-      val df = fs.readRelTable(graphName, relType)
-      val nonNullableColumns = nonNullableProperties ++ Relationship.nonPropertyAttributes
-      CAPSRelationshipTable(relType, df.setNonNullable(nonNullableColumns))
-    }
+      val relTables = schema.relationshipTypes.map { relType =>
+        val nonNullableProperties = schema.relationshipKeys(relType).filterNot {
+          case (_, cypherType) => cypherType.isNullable
+        }.keySet
+        val nonNullableColumns = nonNullableProperties ++ Relationship.nonPropertyAttributes
+        val df = fs.readRelTable(graphName, relType, schema.relTableSchema(relType))
+        CAPSRelationshipTable(relType, df.setNonNullable(nonNullableColumns))
+      }
 
-    CAPSGraph.create(capsMetaData.tags, nodeTables.head, (nodeTables.tail ++ relTables).toSeq: _*)
+      CAPSGraph.create(capsMetaData.tags, nodeTables.head, (nodeTables.tail ++ relTables).toSeq: _*)
+    }.toOption.getOrElse(throw GraphNotFoundException(s"sGraph with name '$graphName'"))
   }
 
   override def schema(name: GraphName): Option[Schema] =
@@ -87,15 +93,15 @@ trait FileSystemAdapter {
 
   protected def listDirectories(path: String): Set[String]
 
+  protected def deleteDirectory(path: String): Unit
+
   protected def readFile(path: String): String
 
   protected def writeFile(path: String, content: String): Unit
 
-  protected def readTable(path: String): DataFrame
+  protected def readTable(path: String, schema: StructType): DataFrame
 
   protected def writeTable(path: String, table: DataFrame): Unit
-
-  protected def deleteDirectory(path: String): Unit
 
   def listGraphs: Set[GraphName] =
     listDirectories(rootPath).map(GraphName)
@@ -107,36 +113,44 @@ trait FileSystemAdapter {
     listGraphs.contains(graphName)
 
   def readCAPSGraphMetaData(graph: GraphName): CAPSGraphMetaData =
-    CAPSGraphMetaData(readFile(graphPath(graph)))
+    CAPSGraphMetaData(readFile(capsMetaDataPath(graph)))
 
   def writeCAPSGraphMetaData(graph: GraphName, metaData: CAPSGraphMetaData): Unit =
-    writeFile(graphPath(graph), metaData.asJson.toString())
+    writeFile(capsMetaDataPath(graph), metaData.asJson.toString())
 
   def readSchema(graph: GraphName): CAPSSchema = {
-    val schemaString = readFile(graphPath(graph))
+    val schemaString = readFile(schemaPath(graph))
     CAPSSchema(JsonUtils.parseJson[Schema](schemaString))
   }
 
   def writeSchema(graph: GraphName, schema: CAPSSchema): Unit =
-    writeFile(graphPath(graph), schema.schema.asJson.toString)
+    writeFile(schemaPath(graph), schema.schema.asJson.toString)
 
   def writeNodeTable(graphName: GraphName, labels: Set[String], table: DataFrame): Unit =
     writeTable(graphName, nodePath(labels), table)
 
-  def readNodeTable(graphName: GraphName, labels: Set[String]): DataFrame =
-    readTable(graphName, nodePath(labels))
+  def readNodeTable(graphName: GraphName, labels: Set[String], schema: StructType): DataFrame =
+    readTable(graphName, nodePath(labels), schema: StructType)
 
   def writeRelTable(graphName: GraphName, relType: String, table: DataFrame): Unit =
     writeTable(graphName, relPath(relType), table)
 
-  def readRelTable(graphName: GraphName, relType: String): DataFrame =
-    readTable(graphName, relPath(relType))
+  def readRelTable(graphName: GraphName, relType: String, schema: StructType): DataFrame =
+    readTable(graphName, relPath(relType), schema)
 
   private def writeTable(graphName: GraphName, path: String, table: DataFrame): Unit =
     writeTable(Paths.get(graphPath(graphName), path).toString, table)
 
-  private def readTable(graphName: GraphName, path: String): DataFrame =
-    readTable(Paths.get(graphPath(graphName), path).toString)
+  private def readTable(graphName: GraphName, path: String, schema: StructType): DataFrame =
+    readTable(Paths.get(graphPath(graphName), path).toString, schema)
+
+  private def capsMetaDataPath(graphName: GraphName): String = {
+    Paths.get(rootPath, graphName.value, "capsMetaData.json").toString
+  }
+
+  private def schemaPath(graphName: GraphName): String = {
+    Paths.get(rootPath, graphName.value, "schema.json").toString
+  }
 
   private def graphPath(graphName: GraphName): String =
     Paths.get(rootPath, graphName.value).toString
@@ -187,6 +201,32 @@ object CirceSerialization {
 }
 
 object CAPSGraphExport {
+
+  implicit class SparkSchema(val schema: Schema) extends AnyVal {
+    import org.opencypher.spark.impl.convert.CAPSCypherType._
+
+    def nodeTableSchema(labels: Set[String]): StructType = {
+      val id = StructField(GraphEntity.sourceIdKey, LongType, nullable = false)
+      val properties = schema.nodeKeys(labels).toSeq.sortBy(_._1).map { case (propertyName, cypherType) =>
+        StructField(propertyName, cypherType.getSparkType, cypherType.isNullable)
+      }
+      val sparkSchema = StructType(id +: properties)
+      sparkSchema.printTreeString()
+      sparkSchema
+    }
+
+    def relTableSchema(relType: String): StructType = {
+      val id = StructField(GraphEntity.sourceIdKey, LongType, nullable = false)
+      val sourceId = StructField(Relationship.sourceStartNodeKey, LongType, nullable = false)
+      val targetId = StructField(Relationship.sourceEndNodeKey, LongType, nullable = false)
+      val properties = schema.relationshipKeys(relType).toSeq.sortBy(_._1).map { case (propertyName, cypherType) =>
+        StructField(propertyName, cypherType.getSparkType, cypherType.isNullable)
+      }
+      val sparkSchema = StructType(id +: sourceId +: targetId +: properties)
+      sparkSchema.printTreeString()
+      sparkSchema
+    }
+  }
 
   implicit class CanonicalTableExport(graph: CAPSGraph) {
 
