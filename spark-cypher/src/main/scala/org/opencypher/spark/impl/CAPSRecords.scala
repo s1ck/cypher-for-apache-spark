@@ -358,7 +358,7 @@ object CAPSRecords extends CypherRecordsCompanion[CAPSRecords, CAPSSession] {
   def create(rdd: JavaRDD[_], beanClass: Class[_])(implicit caps: CAPSSession): CAPSRecords =
     verifyAndCreate(prepareDataFrame(caps.sparkSession.createDataFrame(rdd, beanClass)))
 
-  def create(entityTable: CAPSEntityTable)(implicit caps: CAPSSession): CAPSRecords = {
+  def create(entityTable: CAPSEntityTable, varName: String = placeHolderVarName)(implicit caps: CAPSSession): CAPSRecords = {
     def sourceColumnToPropertyExpressionMapping(variable: Var): Map[String, Expr] = {
       val keyMap = entityTable.mapping.propertyMapping.map {
         case (key, sourceColumn) => sourceColumn -> Property(variable, PropertyKey(key))()
@@ -378,7 +378,7 @@ object CAPSRecords extends CypherRecordsCompanion[CAPSRecords, CAPSSession] {
     def sourceColumnNodeToExpressionMapping(nodeMapping: NodeMapping): Map[String, Expr] = {
       // TODO: Generate var. Nice-to-have property: Same DF gets same var.
       // TODO: Labels on node var?
-      val generatedVar = Var(placeHolderVarName)(nodeMapping.cypherType)
+      val generatedVar = Var(varName)(nodeMapping.cypherType)
 
       val entityMappings = sourceColumnToPropertyExpressionMapping(generatedVar)
 
@@ -398,7 +398,7 @@ object CAPSRecords extends CypherRecordsCompanion[CAPSRecords, CAPSSession] {
     def sourceColumnRelationshipToExpressionMapping(relMapping: RelationshipMapping): Map[String, Expr] = {
       // TODO: Generate var. Nice-to-have property: Same DF gets same var.
       // TODO: Labels on node var?
-      val relVar = Var(placeHolderVarName)(relMapping.cypherType)
+      val relVar = Var(varName)(relMapping.cypherType)
       val entityMappings = sourceColumnToPropertyExpressionMapping(relVar)
 
       val sourceColumnToExpressionMapping: Map[String, Expr] = Seq(
