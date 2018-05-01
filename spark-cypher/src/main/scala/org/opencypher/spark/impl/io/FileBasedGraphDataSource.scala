@@ -2,12 +2,13 @@ package org.opencypher.spark.impl.io
 
 import java.nio.file.Paths
 
-import io.circe.generic.auto._
-import io.circe.syntax._
+import io.circe.Decoder.Result
 import org.apache.spark.sql.DataFrame
 import org.opencypher.okapi.api.graph.{GraphName, PropertyGraph}
-import org.opencypher.okapi.api.schema.Schema
-import org.opencypher.okapi.api.types.CTRelationship
+import org.opencypher.okapi.api.schema.PropertyKeys.PropertyKeys
+import org.opencypher.okapi.api.schema.{LabelPropertyMap, RelTypePropertyMap, Schema}
+import org.opencypher.okapi.api.types.{CTRelationship, CypherType}
+import org.opencypher.okapi.impl.schema.SchemaImpl
 import org.opencypher.okapi.ir.api.expr.Var
 import org.opencypher.okapi.relational.impl.table.ColumnName
 import org.opencypher.spark.api.CAPSSession
@@ -16,7 +17,7 @@ import org.opencypher.spark.impl.CAPSConverters._
 import org.opencypher.spark.impl.CAPSGraph
 import org.opencypher.spark.impl.DataFrameOps._
 import org.opencypher.spark.impl.io.CAPSGraphExport._
-import org.opencypher.spark.impl.io.hdfs.CAPSGraphMetaData
+import org.opencypher.spark.impl.io.hdfs.{CAPSGraphMetaData, JsonUtils}
 import org.opencypher.spark.schema.CAPSSchema
 
 abstract class FileBasedGraphDataSource extends CAPSPropertyGraphDataSource {
@@ -78,6 +79,10 @@ abstract class FileBasedGraphDataSource extends CAPSPropertyGraphDataSource {
 
 trait FileSystemAdapter {
 
+  import CirceSerialization._
+  import io.circe.generic.auto._
+  import io.circe.syntax._
+
   val rootPath: String
 
   protected def listDirectories(path: String): Set[String]
@@ -107,8 +112,10 @@ trait FileSystemAdapter {
   def writeCAPSGraphMetaData(graph: GraphName, metaData: CAPSGraphMetaData): Unit =
     writeFile(graphPath(graph), metaData.asJson.toString())
 
-  def readSchema(graph: GraphName): CAPSSchema =
-    CAPSSchema(readFile(graphPath(graph)))
+  def readSchema(graph: GraphName): CAPSSchema = {
+    val schemaString = readFile(graphPath(graph))
+    CAPSSchema(JsonUtils.parseJson[Schema](schemaString))
+  }
 
   def writeSchema(graph: GraphName, schema: CAPSSchema): Unit =
     writeFile(graphPath(graph), schema.schema.asJson.toString)
@@ -139,6 +146,43 @@ trait FileSystemAdapter {
 
   private def relPath(relType: String): String =
     Paths.get("relationships", relType).toString
+
+}
+
+object CirceSerialization {
+
+  import io.circe._
+  import io.circe.generic.auto._ // This is used, even if Intellij does not get that
+  import io.circe.generic.semiauto._
+
+  implicit class DeserializationResult[A](r: Result[A]) {
+    def value: A = {
+      r match {
+        case Right(value) => value
+        case Left(f) => throw f // DecodingFailure
+      }
+    }
+  }
+
+  implicit val encodeLabelKeys: KeyEncoder[Set[String]] = new KeyEncoder[Set[String]] {
+    override def apply(labels: Set[String]): String = labels.toSeq.sorted.mkString("_")
+  }
+
+  implicit val decodeLabelKeys: KeyDecoder[Set[String]] = new KeyDecoder[Set[String]] {
+    override def apply(key: String): Option[Set[String]] = {
+      if (key.isEmpty) Some(Set.empty) else Some(key.split("_").toSet)
+    }
+  }
+
+  implicit val encodeSchema: Encoder[Schema] =
+    Encoder.forProduct2("labelPropertyMap", "relTypePropertyMap")(s =>
+      (s.labelPropertyMap.map, s.relTypePropertyMap.map)
+    )
+
+  implicit val decodeSchema: Decoder[Schema] =
+    Decoder.forProduct2("labelPropertyMap", "relTypePropertyMap")(
+      (lpm: Map[Set[String], PropertyKeys], rpm: Map[String, PropertyKeys]) =>
+        SchemaImpl(LabelPropertyMap(lpm), RelTypePropertyMap(rpm)))
 
 }
 
@@ -182,4 +226,5 @@ object CAPSGraphExport {
     }
 
   }
+
 }

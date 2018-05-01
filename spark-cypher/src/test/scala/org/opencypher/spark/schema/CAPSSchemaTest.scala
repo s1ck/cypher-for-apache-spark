@@ -26,23 +26,29 @@
  */
 package org.opencypher.spark.schema
 
+import io.circe.Decoder.Result
+import io.circe.syntax._
 import org.opencypher.okapi.api.schema.Schema
-import org.opencypher.okapi.api.types.{CTBoolean, CTFloat, CTInteger, CTString}
+import org.opencypher.okapi.api.types._
 import org.opencypher.okapi.impl.exception.SchemaException
 import org.opencypher.okapi.testing.BaseTestSuite
 import org.opencypher.spark.schema.CAPSSchema._
-import io.circe.syntax._
 
 
 class CAPSSchemaTest extends BaseTestSuite {
 
-  it("can serialize a schema") {
+  it("can serialize and deserialize a schema") {
+    import org.opencypher.spark.impl.io.CirceSerialization._
     val schema1 = Schema.empty
-      .withNodePropertyKeys("A")("foo" -> CTString, "baz" -> CTInteger)
+      .withNodePropertyKeys("A", "B")("foo" -> CTString, "baz" -> CTInteger.nullable)
+      .withRelationshipPropertyKeys("L")("list" -> CTList(CTString.nullable))
+      .withNodePropertyKeys(Set.empty[String], Map("name" -> CTInteger))
     val schema1Json = schema1.asJson
-    println(schema1Json)
-  }
 
+    val deserializedSchema1 = schema1Json.as[Schema].value
+
+    deserializedSchema1 should equal(schema1)
+  }
 
   it("fails when combining type conflicting schemas resulting in type ANY") {
     val schema1 = Schema.empty
