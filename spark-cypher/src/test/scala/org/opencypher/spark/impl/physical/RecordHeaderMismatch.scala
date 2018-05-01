@@ -26,7 +26,6 @@
  */
 package org.opencypher.spark.impl.physical
 
-import org.apache.spark.storage.StorageLevel
 import org.opencypher.okapi.api.schema.Schema
 import org.opencypher.okapi.api.types.{CTNode, CTRelationship, CTString}
 import org.opencypher.okapi.impl.exception.SchemaException
@@ -55,15 +54,6 @@ class RecordHeaderMismatch extends CAPSTestSuite {
 
       override def relationships(name: String, relCypherType: CTRelationship): CAPSRecords = CAPSRecords.empty()(caps)
 
-      override def cache(): CAPSGraph = this
-
-      override def persist(): CAPSGraph = this
-
-      override def persist(storageLevel: StorageLevel): CAPSGraph = this
-
-      override def unpersist(): CAPSGraph = this
-
-      override def unpersist(blocking: Boolean): CAPSGraph = this
     }
     intercept[SchemaException] {
       buggyGraph.cypher("MATCH (n) RETURN n").getRecords

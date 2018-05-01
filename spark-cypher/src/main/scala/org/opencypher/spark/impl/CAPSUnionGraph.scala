@@ -55,16 +55,6 @@ final case class CAPSUnionGraph(graphs: Map[CAPSGraph, Map[Int, Int]])
     graphs.keys.map(g => g.schema).foldLeft(Schema.empty)(_ ++ _).asCaps
   }
 
-  override def cache(): CAPSUnionGraph = map(_.cache())
-
-  override def persist(): CAPSUnionGraph = map(_.persist())
-
-  override def persist(storageLevel: StorageLevel): CAPSUnionGraph = map(_.persist(storageLevel))
-
-  override def unpersist(): CAPSUnionGraph = map(_.unpersist())
-
-  override def unpersist(blocking: Boolean): CAPSUnionGraph = map(_.unpersist(blocking))
-
   private def map(f: CAPSGraph => CAPSGraph): CAPSUnionGraph =
     CAPSUnionGraph(graphs.keys.map(f).zip(graphs.keys).toMap.mapValues(graphs))
 

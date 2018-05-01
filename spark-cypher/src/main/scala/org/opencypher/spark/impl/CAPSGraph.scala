@@ -57,16 +57,6 @@ trait CAPSGraph extends PropertyGraph with GraphOperations with Serializable {
 
   override def schema: CAPSSchema
 
-  def cache(): CAPSGraph
-
-  def persist(): CAPSGraph
-
-  def persist(storageLevel: StorageLevel): CAPSGraph
-
-  def unpersist(): CAPSGraph
-
-  def unpersist(blocking: Boolean): CAPSGraph
-
   def nodesWithExactLabels(name: String, labels: Set[String]): CAPSRecords = {
     val nodeType = CTNode(labels)
     val nodeVar = Var(name)(nodeType)
@@ -124,16 +114,6 @@ object CAPSGraph {
 
       override def session: CAPSSession = caps
 
-      override def cache(): CAPSGraph = this
-
-      override def persist(): CAPSGraph = this
-
-      override def persist(storageLevel: StorageLevel): CAPSGraph = this
-
-      override def unpersist(): CAPSGraph = this
-
-      override def unpersist(blocking: Boolean): CAPSGraph = this
-
       override def tags: Set[Int] = Set.empty
     }
 
@@ -171,31 +151,6 @@ object CAPSGraph {
 
     override def relationships(name: String, relCypherType: CTRelationship): CAPSRecords =
       lazyGraph.relationships(name, relCypherType)
-
-    override def cache(): CAPSGraph = {
-      lazyGraph.cache()
-      this
-    }
-
-    override def persist(): CAPSGraph = {
-      lazyGraph.persist()
-      this
-    }
-
-    override def persist(storageLevel: StorageLevel): CAPSGraph = {
-      lazyGraph.persist(storageLevel)
-      this
-    }
-
-    override def unpersist(): CAPSGraph = {
-      lazyGraph.unpersist()
-      this
-    }
-
-    override def unpersist(blocking: Boolean): CAPSGraph = {
-      lazyGraph.unpersist(blocking)
-      this
-    }
   }
 
   sealed abstract class EmptyGraph(implicit val caps: CAPSSession) extends CAPSGraph {

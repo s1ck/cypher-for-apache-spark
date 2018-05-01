@@ -51,16 +51,6 @@ class CAPSPatternGraph(
 
   def show(): Unit = baseTable.data.show()
 
-  override def cache(): CAPSPatternGraph = map(_.cache())
-
-  override def persist(): CAPSPatternGraph = map(_.persist())
-
-  override def persist(storageLevel: StorageLevel): CAPSPatternGraph = map(_.persist(storageLevel))
-
-  override def unpersist(): CAPSPatternGraph = map(_.unpersist())
-
-  override def unpersist(blocking: Boolean): CAPSPatternGraph = map(_.unpersist(blocking))
-
   private def map(f: CAPSRecords => CAPSRecords) =
     new CAPSPatternGraph(f(baseTable), schema, tags)
 

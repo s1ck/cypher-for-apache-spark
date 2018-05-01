@@ -55,16 +55,6 @@ class Neo4jGraph(val schema: CAPSSchema, val session: CAPSSession)(
 
   protected implicit val caps = session
 
-  override def cache(): CAPSGraph = map(_.cache(), _.cache())
-
-  override def persist(): CAPSGraph = map(_.persist(), _.persist())
-
-  override def persist(storageLevel: StorageLevel): CAPSGraph = map(_.persist(storageLevel), _.persist(storageLevel))
-
-  override def unpersist(): CAPSGraph = map(_.unpersist(), _.unpersist())
-
-  override def unpersist(blocking: Boolean): CAPSGraph = map(_.unpersist(blocking), _.unpersist(blocking))
-
   private def map(
     f: RDD[InternalNode] => RDD[InternalNode],
     g: RDD[InternalRelationship] => RDD[InternalRelationship]) =
