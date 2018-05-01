@@ -36,7 +36,7 @@ import org.opencypher.spark.schema.CAPSSchema._
 class CAPSSchemaTest extends BaseTestSuite {
 
   it("can serialize and deserialize a schema") {
-    import org.opencypher.spark.impl.io.CirceSerialization._
+    import org.opencypher.spark.impl.io.JsonSerialization._
     val schema1 = Schema.empty
       .withNodePropertyKeys("A", "B")("foo" -> CTString, "baz" -> CTInteger.nullable)
       .withRelationshipPropertyKeys("L")("list" -> CTList(CTString.nullable))

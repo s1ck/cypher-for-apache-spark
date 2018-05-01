@@ -1,3 +1,29 @@
+/*
+ * Copyright (c) 2016-2018 "Neo4j Sweden, AB" [https://neo4j.com]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * Attribution Notice under the terms of the Apache License 2.0
+ *
+ * This work was created by the collective efforts of the openCypher community.
+ * Without limiting the terms of Section 6, any Derivative Work that is not
+ * approved by the public consensus process of the openCypher Implementers Group
+ * should not be described as “Cypher” (and Cypher® is a registered trademark of
+ * Neo4j Inc.) or as "openCypher". Extensions by implementers or prototypes or
+ * proposals for change that have been documented or implemented should only be
+ * described as "implementation extensions to Cypher" or as "proposed changes to
+ * Cypher that are not yet approved by the openCypher community".
+ */
 package org.opencypher.spark.impl.io
 
 import java.nio.file.Paths
@@ -8,7 +34,7 @@ import org.apache.spark.sql.types.{LongType, StructField, StructType}
 import org.opencypher.okapi.api.graph.{GraphName, PropertyGraph}
 import org.opencypher.okapi.api.schema.PropertyKeys.PropertyKeys
 import org.opencypher.okapi.api.schema.{LabelPropertyMap, RelTypePropertyMap, Schema}
-import org.opencypher.okapi.api.types.{CTRelationship, CypherType}
+import org.opencypher.okapi.api.types.CTRelationship
 import org.opencypher.okapi.impl.exception.GraphNotFoundException
 import org.opencypher.okapi.impl.schema.SchemaImpl
 import org.opencypher.okapi.ir.api.expr.Var
@@ -19,39 +45,42 @@ import org.opencypher.spark.impl.CAPSConverters._
 import org.opencypher.spark.impl.CAPSGraph
 import org.opencypher.spark.impl.DataFrameOps._
 import org.opencypher.spark.impl.io.CAPSGraphExport._
-import org.opencypher.spark.impl.io.hdfs.{CAPSGraphMetaData, JsonUtils}
+import org.opencypher.spark.impl.io.hdfs.CAPSGraphMetaData
 import org.opencypher.spark.schema.CAPSSchema
 
 import scala.util.Try
 
-// TODO: Lazily cache graph schemas
 abstract class FileBasedGraphDataSource extends CAPSPropertyGraphDataSource {
 
   implicit val session: CAPSSession
   val fs: FileSystemAdapter
 
-  override def hasGraph(name: GraphName): Boolean = fs.hasGraph(name)
+  protected var schemaCache: Map[GraphName, CAPSSchema] = Map.empty
+
+  override def hasGraph(graphName: GraphName): Boolean = {
+    schemaCache.contains(graphName) || fs.hasGraph(graphName)
+  }
 
   override def graph(graphName: GraphName): PropertyGraph = {
     Try {
-      val schema: CAPSSchema = fs.readSchema(graphName)
+      val capsSchema: CAPSSchema = schema(graphName).get
       val capsMetaData: CAPSGraphMetaData = fs.readCAPSGraphMetaData(graphName)
 
-      val nodeTables = schema.allLabelCombinations.map { combo =>
-        val nonNullableProperties = schema.keysFor(Set(combo)).filterNot {
+      val nodeTables = capsSchema.allLabelCombinations.map { combo =>
+        val nonNullableProperties = capsSchema.keysFor(Set(combo)).filterNot {
           case (_, cypherType) => cypherType.isNullable
         }.keySet
         val nonNullableColumns = nonNullableProperties + GraphEntity.sourceIdKey
-        val df = fs.readNodeTable(graphName, combo, schema.nodeTableSchema(combo))
+        val df = fs.readNodeTable(graphName, combo, capsSchema.canonicalNodeTableSchema(combo))
         CAPSNodeTable(combo, df.setNonNullable(nonNullableColumns))
       }
 
-      val relTables = schema.relationshipTypes.map { relType =>
-        val nonNullableProperties = schema.relationshipKeys(relType).filterNot {
+      val relTables = capsSchema.relationshipTypes.map { relType =>
+        val nonNullableProperties = capsSchema.relationshipKeys(relType).filterNot {
           case (_, cypherType) => cypherType.isNullable
         }.keySet
         val nonNullableColumns = nonNullableProperties ++ Relationship.nonPropertyAttributes
-        val df = fs.readRelTable(graphName, relType, schema.relTableSchema(relType))
+        val df = fs.readRelTable(graphName, relType, capsSchema.canonicalRelTableSchema(relType))
         CAPSRelationshipTable(relType, df.setNonNullable(nonNullableColumns))
       }
 
@@ -59,34 +88,44 @@ abstract class FileBasedGraphDataSource extends CAPSPropertyGraphDataSource {
     }.toOption.getOrElse(throw GraphNotFoundException(s"sGraph with name '$graphName'"))
   }
 
-  override def schema(name: GraphName): Option[Schema] =
-    Some(fs.readSchema(name))
-
-  override def store(name: GraphName, graph: PropertyGraph): Unit = {
-    val capsGraph = graph.asCaps
-    val schema = capsGraph.schema
-    fs.writeCAPSGraphMetaData(name, CAPSGraphMetaData(capsGraph.tags))
-    fs.writeSchema(name, schema)
-
-    schema.labelCombinations.combos.foreach { combo =>
-      fs.writeNodeTable(name, combo, capsGraph.canonicalNodeTable(combo))
-    }
-
-    schema.relationshipTypes.foreach { relType =>
-      fs.writeRelTable(name, relType, capsGraph.canonicalRelationshipTable(relType))
+  override def schema(graphName: GraphName): Option[CAPSSchema] = {
+    if (schemaCache.contains(graphName)) {
+      schemaCache.get(graphName)
+    } else {
+      val s = fs.readSchema(graphName)
+      schemaCache += graphName -> s
+      Some(s)
     }
   }
 
-  override def delete(graphName: GraphName): Unit = fs.deleteGraph(graphName)
+  override def store(graphName: GraphName, graph: PropertyGraph): Unit = {
+    val capsGraph = graph.asCaps
+    val schema = capsGraph.schema
+    schemaCache += graphName -> schema
+    fs.writeCAPSGraphMetaData(graphName, CAPSGraphMetaData(capsGraph.tags))
+    fs.writeSchema(graphName, schema)
+
+    schema.labelCombinations.combos.foreach { combo =>
+      fs.writeNodeTable(graphName, combo, capsGraph.canonicalNodeTable(combo))
+    }
+
+    schema.relationshipTypes.foreach { relType =>
+      fs.writeRelTable(graphName, relType, capsGraph.canonicalRelationshipTable(relType))
+    }
+  }
+
+  override def delete(graphName: GraphName): Unit = {
+    schemaCache -= graphName
+    fs.deleteGraph(graphName)
+  }
 
   override def graphNames: Set[GraphName] = fs.listGraphs
 }
 
-
 trait FileSystemAdapter {
 
-  import CirceSerialization._
-  import io.circe.generic.auto._
+  import CAPSSchema._
+  import JsonSerialization._
   import io.circe.syntax._
 
   val rootPath: String
@@ -113,14 +152,14 @@ trait FileSystemAdapter {
     listGraphs.contains(graphName)
 
   def readCAPSGraphMetaData(graph: GraphName): CAPSGraphMetaData =
-    CAPSGraphMetaData(readFile(capsMetaDataPath(graph)))
+    parse[CAPSGraphMetaData](readFile(capsMetaDataPath(graph)))
 
   def writeCAPSGraphMetaData(graph: GraphName, metaData: CAPSGraphMetaData): Unit =
     writeFile(capsMetaDataPath(graph), metaData.asJson.toString())
 
   def readSchema(graph: GraphName): CAPSSchema = {
     val schemaString = readFile(schemaPath(graph))
-    CAPSSchema(JsonUtils.parseJson[Schema](schemaString))
+    parse[Schema](schemaString).asCaps
   }
 
   def writeSchema(graph: GraphName, schema: CAPSSchema): Unit =
@@ -163,11 +202,18 @@ trait FileSystemAdapter {
 
 }
 
-object CirceSerialization {
+object JsonSerialization {
 
   import io.circe._
-  import io.circe.generic.auto._ // This is used, even if Intellij does not get that
+  import io.circe.generic.auto._
   import io.circe.generic.semiauto._
+
+  def parse[A: Decoder](json: String): A = {
+    parser.parse(json) match {
+      case Right(parsedJson) => parsedJson.as[A].value
+      case Left(f) => throw f // ParsingFailure
+    }
+  }
 
   implicit class DeserializationResult[A](r: Result[A]) {
     def value: A = {
@@ -198,33 +244,33 @@ object CirceSerialization {
       (lpm: Map[Set[String], PropertyKeys], rpm: Map[String, PropertyKeys]) =>
         SchemaImpl(LabelPropertyMap(lpm), RelTypePropertyMap(rpm)))
 
+  implicit val encodeMetaData: Encoder[CAPSGraphMetaData] = deriveEncoder[CAPSGraphMetaData]
+  implicit val decodeMetaData: Decoder[CAPSGraphMetaData] = deriveDecoder[CAPSGraphMetaData]
+
 }
 
 object CAPSGraphExport {
 
-  implicit class SparkSchema(val schema: Schema) extends AnyVal {
+  implicit class CanonicalTableSparkSchema(val schema: Schema) extends AnyVal {
+
     import org.opencypher.spark.impl.convert.CAPSCypherType._
 
-    def nodeTableSchema(labels: Set[String]): StructType = {
+    def canonicalNodeTableSchema(labels: Set[String]): StructType = {
       val id = StructField(GraphEntity.sourceIdKey, LongType, nullable = false)
       val properties = schema.nodeKeys(labels).toSeq.sortBy(_._1).map { case (propertyName, cypherType) =>
         StructField(propertyName, cypherType.getSparkType, cypherType.isNullable)
       }
-      val sparkSchema = StructType(id +: properties)
-      sparkSchema.printTreeString()
-      sparkSchema
+      StructType(id +: properties)
     }
 
-    def relTableSchema(relType: String): StructType = {
+    def canonicalRelTableSchema(relType: String): StructType = {
       val id = StructField(GraphEntity.sourceIdKey, LongType, nullable = false)
       val sourceId = StructField(Relationship.sourceStartNodeKey, LongType, nullable = false)
       val targetId = StructField(Relationship.sourceEndNodeKey, LongType, nullable = false)
       val properties = schema.relationshipKeys(relType).toSeq.sortBy(_._1).map { case (propertyName, cypherType) =>
         StructField(propertyName, cypherType.getSparkType, cypherType.isNullable)
       }
-      val sparkSchema = StructType(id +: sourceId +: targetId +: properties)
-      sparkSchema.printTreeString()
-      sparkSchema
+      StructType(id +: sourceId +: targetId +: properties)
     }
   }
 

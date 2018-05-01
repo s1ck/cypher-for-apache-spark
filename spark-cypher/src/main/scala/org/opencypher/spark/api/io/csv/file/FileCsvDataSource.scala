@@ -18,12 +18,9 @@ case class FileCsvDataSource(rootPath: String)(implicit val session: CAPSSession
     override val rootPath: String = self.rootPath
 
     override protected def listDirectories(path: String): Set[String] = {
-      Files
-        .list(Paths.get(path))
-        .iterator
-        .asScala
-        .filter(p => Files.isDirectory(p))
-        .map(p => p.getFileName.toString)
+      Files.list(Paths.get(path)).iterator.asScala
+        .filter(Files.isDirectory(_))
+        .map(_.getFileName.toString)
         .toSet
     }
 
@@ -32,30 +29,23 @@ case class FileCsvDataSource(rootPath: String)(implicit val session: CAPSSession
     }
 
     override protected def readFile(path: String): String = {
-      println(s"reading file from $path")
       new String(Files.readAllBytes(Paths.get(path)))
     }
 
     override protected def writeFile(path: String, content: String): Unit = {
-      println(s"writing file to $path")
       val file = new File(path.toString)
       file.getParentFile.mkdirs
-      if (!file.exists) file.createNewFile
       val bw = new BufferedWriter(new FileWriter(file))
       bw.write(content)
       bw.close()
     }
 
     override protected def readTable(path: String, schema: StructType): DataFrame = {
-      val df = session.sparkSession.read.schema(schema).csv(path)
-      df.show()
-      df.schema.printTreeString()
-      df
+      session.sparkSession.read.schema(schema).csv(path)
     }
 
     override protected def writeTable(path: String, table: DataFrame): Unit = {
-      table.show()
-      table.write.csv(path) //.option("header", "true")
+      table.write.csv(path)
     }
 
   }
