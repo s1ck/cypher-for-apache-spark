@@ -33,11 +33,14 @@ import org.opencypher.okapi.api.types._
 import org.opencypher.okapi.api.value.CypherValue
 import org.opencypher.okapi.api.value.CypherValue.CypherValue
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
-import org.opencypher.okapi.ir.api.expr.{Expr, Param}
+import org.opencypher.okapi.ir.api.expr.{Expr, Param, Var}
 import org.opencypher.okapi.relational.impl.table.RecordHeader
+import org.opencypher.spark.api.CAPSSession
 import org.opencypher.spark.api.SparkConfiguration._
+import org.opencypher.spark.api.io.{CAPSNodeTable, CAPSRelationshipTable}
 import org.opencypher.spark.impl.convert.CAPSCypherType._
 import org.opencypher.spark.impl.physical.CAPSRuntimeContext
+import org.opencypher.spark.schema.CAPSSchema
 
 object DataFrameOps {
 
@@ -93,6 +96,15 @@ object DataFrameOps {
 
   implicit class RichDataFrame(val df: DataFrame) extends AnyVal {
 
+    def toNodeTable(varName: String, labels: Set[String], optionalLabels: Set[String])(implicit session: CAPSSession): CAPSRecords = {
+      val nodeTable = CAPSNodeTable(labels, optionalLabels.zip(optionalLabels).toMap, df)
+      CAPSRecords.create(nodeTable, varName)
+    }
+
+    def toRelTable(varName: String, relType: String)(implicit session: CAPSSession): CAPSRecords = {
+      val relTable = CAPSRelationshipTable(relType, df)
+      CAPSRecords.create(relTable, varName)
+    }
 
     /**
       * Returns the corresponding Cypher type for the given column name in the data frame.
