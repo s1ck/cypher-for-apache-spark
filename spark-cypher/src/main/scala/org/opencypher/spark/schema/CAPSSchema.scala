@@ -37,14 +37,16 @@ import org.opencypher.spark.impl.convert.CAPSCypherType._
 import org.opencypher.spark.impl.io.hdfs.{CAPSGraphMetaData, JsonUtils}
 import io.circe._
 import io.circe.generic.semiauto._
+//import io.circe.generic.auto._
 
 
 object CAPSSchema {
 
 
-  implicit val decodeLabelPropertMap: Decoder[LabelPropertyMap] = deriveDecoder[LabelPropertyMap]
-  implicit val decodeRelTypePropertyMap: Decoder[RelTypePropertyMap] = deriveDecoder[RelTypePropertyMap]
+//  implicit val decodeLabelPropertMap: Decoder[LabelPropertyMap] = deriveDecoder[LabelPropertyMap]
+//  implicit val decodeRelTypePropertyMap: Decoder[RelTypePropertyMap] = deriveDecoder[RelTypePropertyMap]
   implicit val decodeSchemaImpl: Decoder[SchemaImpl] = deriveDecoder[SchemaImpl]
+  implicit val encodeSchemaImpl: Encoder[SchemaImpl] = deriveEncoder[SchemaImpl]
 
   val empty: CAPSSchema = Schema.empty.asCaps
 

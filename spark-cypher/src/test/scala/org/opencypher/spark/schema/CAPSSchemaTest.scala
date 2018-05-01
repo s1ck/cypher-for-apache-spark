@@ -31,8 +31,19 @@ import org.opencypher.okapi.api.types.{CTBoolean, CTFloat, CTInteger, CTString}
 import org.opencypher.okapi.impl.exception.SchemaException
 import org.opencypher.okapi.testing.BaseTestSuite
 import org.opencypher.spark.schema.CAPSSchema._
+import io.circe.syntax._
+
 
 class CAPSSchemaTest extends BaseTestSuite {
+
+  it("can serialize a schema") {
+    val schema1 = Schema.empty
+      .withNodePropertyKeys("A")("foo" -> CTString, "baz" -> CTInteger)
+    val schema1Json = schema1.asJson
+    println(schema1Json)
+  }
+
+
   it("fails when combining type conflicting schemas resulting in type ANY") {
     val schema1 = Schema.empty
       .withNodePropertyKeys("A")("foo" -> CTString, "bar" -> CTString)

@@ -8,15 +8,20 @@ import org.apache.spark.sql.DataFrame
 import org.opencypher.okapi.api.graph.{GraphName, PropertyGraph}
 import org.opencypher.okapi.api.schema.Schema
 import org.opencypher.okapi.api.types.CTRelationship
+import org.opencypher.okapi.ir.api.expr.Var
+import org.opencypher.okapi.relational.impl.table.ColumnName
+import org.opencypher.spark.api.CAPSSession
 import org.opencypher.spark.api.io.{CAPSNodeTable, CAPSRelationshipTable, GraphEntity, Relationship}
 import org.opencypher.spark.impl.CAPSConverters._
 import org.opencypher.spark.impl.CAPSGraph
 import org.opencypher.spark.impl.DataFrameOps._
+import org.opencypher.spark.impl.io.CAPSGraphExport._
 import org.opencypher.spark.impl.io.hdfs.CAPSGraphMetaData
 import org.opencypher.spark.schema.CAPSSchema
 
 abstract class FileBasedGraphDataSource extends CAPSPropertyGraphDataSource {
 
+  implicit val caps: CAPSSession
   val fs: FileSystemAdapter
 
   override def hasGraph(name: GraphName): Boolean =
@@ -57,13 +62,11 @@ abstract class FileBasedGraphDataSource extends CAPSPropertyGraphDataSource {
     fs.writeSchema(name, schema)
 
     schema.labelCombinations.combos.foreach { combo =>
-      val nodes = capsGraph.nodesWithExactLabels("n", combo)
-      fs.writeNodeTable(name, combo, nodes.data)
+      fs.writeNodeTable(name, combo, capsGraph.canonicalNodeTable(combo))
     }
 
     schema.relationshipTypes.foreach { relType =>
-      val rels = capsGraph.relationships("r", CTRelationship(relType))
-      fs.writeRelTable(name, relType, rels.data)
+      fs.writeRelTable(name, relType, capsGraph.canonicalRelationshipTable(relType))
     }
   }
 
@@ -108,7 +111,7 @@ trait FileSystemAdapter {
     CAPSSchema(readFile(graphPath(graph)))
 
   def writeSchema(graph: GraphName, schema: CAPSSchema): Unit =
-    writeFile(graphPath(graph), schema.asJson.toString)
+    writeFile(graphPath(graph), schema.schema.asJson.toString)
 
   def writeNodeTable(graphName: GraphName, labels: Set[String], table: DataFrame): Unit =
     writeTable(graphName, nodePath(labels), table)
@@ -137,4 +140,46 @@ trait FileSystemAdapter {
   private def relPath(relType: String): String =
     Paths.get("relationships", relType).toString
 
+}
+
+object CAPSGraphExport {
+
+  implicit class CanonicalTableExport(graph: CAPSGraph) {
+
+    def canonicalNodeTable(labels: Set[String]): DataFrame = {
+      val varName = "n"
+      val nodeRecords = graph.nodesWithExactLabels(varName, labels)
+
+      val idRenaming = varName -> GraphEntity.sourceIdKey
+      val propertyRenamings = nodeRecords.header.propertySlots(Var(varName)())
+        .map { case (p, slot) => ColumnName.of(slot) -> p.key.name }
+
+      val selectColumns = (idRenaming :: propertyRenamings.toList.sorted).map {
+        case (oldName, newName) => nodeRecords.data.col(oldName).as(newName)
+      }
+
+      nodeRecords.data.select(selectColumns: _*)
+    }
+
+    def canonicalRelationshipTable(relType: String): DataFrame = {
+      val varName = "r"
+      val relCypherType = CTRelationship(relType)
+      val v = Var(varName)(relCypherType)
+
+      val relRecords = graph.relationships(varName, relCypherType)
+
+      val idRenaming = varName -> GraphEntity.sourceIdKey
+      val sourceIdRenaming = ColumnName.of(relRecords.header.sourceNodeSlot(v)) -> Relationship.sourceStartNodeKey
+      val targetIdRenaming = ColumnName.of(relRecords.header.targetNodeSlot(v)) -> Relationship.sourceEndNodeKey
+      val propertyRenamings = relRecords.header.propertySlots(Var(varName)())
+        .map { case (p, slot) => ColumnName.of(slot) -> p.key.name }
+
+      val selectColumns = (idRenaming :: sourceIdRenaming :: targetIdRenaming :: propertyRenamings.toList.sorted).map {
+        case (oldName, newName) => relRecords.data.col(oldName).as(newName)
+      }
+
+      relRecords.data.select(selectColumns: _*)
+    }
+
+  }
 }
