@@ -26,6 +26,7 @@
  */
 package org.opencypher.okapi.relational.api.schema
 
+import org.opencypher.okapi.api.graph.PropertyGraph
 import org.opencypher.okapi.api.schema.Schema
 import org.opencypher.okapi.api.types.{CTBoolean, CTNode, CTRelationship}
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
@@ -37,12 +38,12 @@ object RelationalSchema {
 
   implicit class SchemaOps(val schema: Schema) {
 
+    def defaultHeaderForNodeType(nodeType: CTNode): RecordHeader = {
+      headerForNode(Var(PropertyGraph.defaultNodeVarName)(nodeType), nodeType.labels)
+    }
+
     def headerForNode(node: Var): RecordHeader = {
-      val labels: Set[String] = node.cypherType match {
-        case CTNode(l, _) => l
-        case other => throw IllegalArgumentException(CTNode, other)
-      }
-      headerForNode(node, labels)
+      headerForNode(node, node.nodeType.labels)
     }
 
     def headerForNode(node: Var, labels: Set[String]): RecordHeader = {
@@ -66,16 +67,12 @@ object RelationalSchema {
       RecordHeader.from(labelExpressions ++ propertyExpressions + node)
     }
 
-    def headerForRelationship(rel: Var): RecordHeader = {
-      val types = rel.cypherType match {
-        case CTRelationship(relTypes, _) if relTypes.isEmpty =>
-          schema.relationshipTypes
-        case CTRelationship(relTypes, _) =>
-          relTypes
-        case other =>
-          throw IllegalArgumentException(CTRelationship, other)
-      }
+    def defaultHeaderForRelType(relType: CTRelationship): RecordHeader = {
+      headerForRelationship(Var(PropertyGraph.defaultRelVarName)(relType), relType.types)
+    }
 
+    def headerForRelationship(rel: Var): RecordHeader = {
+      val types = if (rel.relType.types.isEmpty) schema.relationshipTypes else rel.relType.types
       headerForRelationship(rel, types)
     }
 

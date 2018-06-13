@@ -27,9 +27,10 @@
 package org.opencypher.okapi.relational.impl.flat
 
 import cats.Monoid
+import org.opencypher.okapi.api.graph.PropertyGraph
 import org.opencypher.okapi.api.schema.Schema
 import org.opencypher.okapi.api.types._
-import org.opencypher.okapi.impl.exception.IllegalStateException
+import org.opencypher.okapi.impl.exception.{IllegalArgumentException, IllegalStateException}
 import org.opencypher.okapi.ir.api.block.SortItem
 import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.ir.api.util.FreshVariableNamer
@@ -76,27 +77,12 @@ class FlatOperatorProducer(implicit context: FlatPlannerContext) {
     * This acts like a leaf operator even though it has an ancestor in the tree.
     * That means that it will discard any incoming fields from the ancestor header (assumes it is empty)
     */
-  def nodeScan(node: Var, prev: FlatOperator): NodeScan = {
-    NodeScan(node, prev, prev.sourceGraph.schema.headerForNode(node))
+  def nodeScan(nodeType: CTNode, prev: FlatOperator): NodeScan = {
+    NodeScan(nodeType, prev, prev.sourceGraph.schema.defaultHeaderForNodeType(nodeType))
   }
 
-  def relationshipScan(rel: Var, prev: FlatOperator): RelationshipScan = {
-    RelationshipScan(rel, prev, prev.sourceGraph.schema.headerForRelationship(rel))
-  }
-
-  @tailrec
-  private def relTypeFromList(t: CypherType): Set[String] = {
-    t match {
-      case l: CTList => relTypeFromList(l.elementType)
-      case r: CTRelationship => r.types
-      case _ => throw IllegalStateException(s"Required CTList or CTRelationship, but got $t")
-    }
-  }
-
-  def varLengthRelationshipScan(relationshipList: Var, prev: FlatOperator): RelationshipScan = {
-    val types = relTypeFromList(relationshipList.cypherType)
-    val edge = FreshVariableNamer(relationshipList.name + "extended", CTRelationship(types, relationshipList.cypherType.graph))
-    relationshipScan(edge, prev)
+  def relationshipScan(relType: CTRelationship, prev: FlatOperator): RelationshipScan = {
+    RelationshipScan(relType, prev, prev.sourceGraph.schema.defaultHeaderForRelType(relType))
   }
 
   def aggregate(aggregations: Set[(Var, Aggregator)], group: Set[Var], in: FlatOperator): Aggregate = {
@@ -116,10 +102,22 @@ class FlatOperatorProducer(implicit context: FlatPlannerContext) {
     val containsExpr = in.header.contains(expr)
 
     maybeAlias match {
-      case Some(alias) if containsExpr => Alias(expr, alias, in, updatedHeader.withAlias(expr as alias))
+      case Some(alias) if containsExpr => planAlias(expr, alias, in)
       case Some(alias) => Project(expr, Some(alias), in, updatedHeader.withAlias(expr as alias))
       case None => Project(expr, None, in, updatedHeader)
     }
+  }
+
+  def planAlias(oldName: Expr, newName: Var, in: FlatOperator): FlatOperator = {
+    in.withHeader(in.header.withAlias(oldName as newName))
+  }
+
+  def planDropExpression(expr: Expr, in: FlatOperator): FlatOperator = {
+    in.withHeader(in.header - expr)
+  }
+
+  def planRenameVar(oldName: Var, newName: Var, in: FlatOperator): FlatOperator = {
+    planDropExpression(oldName, planAlias(oldName, newName, in))
   }
 
   def expand(
@@ -131,9 +129,10 @@ class FlatOperatorProducer(implicit context: FlatPlannerContext) {
     sourceOp: FlatOperator,
     targetOp: FlatOperator
   ): FlatOperator = {
+    val defaultScanRelHeader = schema.headerForRelationship(Var(PropertyGraph.defaultRelVarName)(rel.relType))
     val relHeader = schema.headerForRelationship(rel)
     val expandHeader = sourceOp.header ++ relHeader ++ targetOp.header
-    Expand(source, rel, direction, target, sourceOp, targetOp, expandHeader, relHeader)
+    Expand(source, rel, direction, target, sourceOp, targetOp, expandHeader, defaultScanRelHeader)
   }
 
   def expandInto(

@@ -230,7 +230,11 @@ case class RecordHeader(exprToColumn: Map[Expr, String]) {
       case Some(_) => this
 
       case None =>
-        val newColumnName = (expr.toString.hashCode & Int.MaxValue).toString
+        val newColumnName = expr.toString
+          .replaceAll("-", "_")
+          .replaceAll("\\.", "_")
+
+        assert(!columns.contains(newColumnName), s"column name $newColumnName already exists in $columns")
 
         // Aliases for (possible) owner of expr need to be updated as well
         val exprsToAdd: Set[Expr] = expr.owner match {
@@ -274,6 +278,8 @@ case class RecordHeader(exprToColumn: Map[Expr, String]) {
       case other => throw IllegalArgumentException(s"An expression in $this", s"Unknown expression $other")
     }
   }
+
+  def -[T <: Expr](expr: T): RecordHeader = this -- Set(expr)
 
   def ++(other: RecordHeader): RecordHeader = copy(exprToColumn = exprToColumn ++ other.exprToColumn)
 

@@ -39,7 +39,9 @@ import org.opencypher.okapi.relational.impl.flat
 import org.opencypher.okapi.relational.impl.flat.FlatOperator
 import org.opencypher.okapi.relational.impl.table._
 
-class PhysicalPlanner[P <: PhysicalOperator[R, G, C], R <: CypherRecords, G <: PropertyGraph, C <: RuntimeContext[R, G]](producer: PhysicalOperatorProducer[P, R, G, C])
+class PhysicalPlanner[P <: PhysicalOperator[R, G, C], R <: CypherRecords, G <: PropertyGraph, C <: RuntimeContext[R, G]](
+  producer: PhysicalOperatorProducer[P, R, G, C]
+)
 
   extends DirectCompilationStage[FlatOperator, P, PhysicalPlannerContext[P, R]] {
 
@@ -82,13 +84,11 @@ class PhysicalPlanner[P <: PhysicalOperator[R, G, C], R <: CypherRecords, G <: P
             planConstructGraph(Some(in), construct)
         }
 
-      case op
-        @flat.NodeScan(v, in, header) => producer.planNodeScan(process(in), op.sourceGraph, v, header)
+      case op@flat.NodeScan(nodeType, in, header) =>
+        producer.planNodeScan(process(in), op.sourceGraph, nodeType, header)
 
-      case op
-        @flat.RelationshipScan(e, in, header) => producer.planRelationshipScan(process(in), op.sourceGraph, e, header)
-
-      case flat.Alias(expr, alias, in, header) => producer.planAlias(process(in), expr, alias, header)
+      case op@flat.RelationshipScan(relType, in, header) =>
+        producer.planRelationshipScan(process(in), op.sourceGraph, relType, header)
 
       case flat.Unwind(explodeExpr: Explode, item, in, header) =>
         producer.planProject(process(in), explodeExpr, Some(item), header)
@@ -204,7 +204,8 @@ class PhysicalPlanner[P <: PhysicalOperator[R, G, C], R <: CypherRecords, G <: P
     }
   }
 
-  private def planConstructGraph(in: Option[FlatOperator], construct: LogicalPatternGraph)(implicit context: PhysicalPlannerContext[P, R]) = {
+  private def planConstructGraph(in: Option[FlatOperator], construct: LogicalPatternGraph)
+    (implicit context: PhysicalPlannerContext[P, R]) = {
     val onGraphPlan = {
       construct.onGraphs match {
         case Nil => producer.planStart() // Empty start
@@ -222,7 +223,8 @@ class PhysicalPlanner[P <: PhysicalOperator[R, G, C], R <: CypherRecords, G <: P
     constructGraphPlan
   }
 
-  private def planOptional(lhs: FlatOperator, rhs: FlatOperator, header: RecordHeader)(implicit context: PhysicalPlannerContext[P, R]) = {
+  private def planOptional(lhs: FlatOperator, rhs: FlatOperator, header: RecordHeader)
+    (implicit context: PhysicalPlannerContext[P, R]) = {
     val lhsData = process(lhs)
     val rhsData = process(rhs)
     val lhsHeader = lhs.header
@@ -248,7 +250,7 @@ class PhysicalPlanner[P <: PhysicalOperator[R, G, C], R <: CypherRecords, G <: P
     val rhsWithRenamed = producer.planRenameColumns(rhsWithDropped, joinFieldRenames, rhsHeaderWithRenames)
 
     // 4. Left outer join the left side and the processed right side
-    val joined = producer.planJoin(lhsData, rhsWithRenamed, joinExprs.map(e => e -> e).toSeq, rhsHeaderWithRenames ++ lhsHeader , LeftOuterJoin)
+    val joined = producer.planJoin(lhsData, rhsWithRenamed, joinExprs.map(e => e -> e).toSeq, rhsHeaderWithRenames ++ lhsHeader, LeftOuterJoin)
 
     // 5. Select the resulting header expressions
     producer.planSelect(joined, header.expressions.map(e => e -> Option.empty[Var]).toList, header)

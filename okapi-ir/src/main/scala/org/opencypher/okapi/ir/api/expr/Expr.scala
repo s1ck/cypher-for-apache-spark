@@ -27,6 +27,7 @@
 package org.opencypher.okapi.ir.api.expr
 
 import org.opencypher.okapi.api.types._
+import org.opencypher.okapi.impl.exception.IllegalArgumentException
 import org.opencypher.okapi.ir.api._
 import org.opencypher.okapi.ir.api.expr.FlattenOps._
 import org.opencypher.okapi.trees.AbstractTreeNode
@@ -84,6 +85,16 @@ final case class Var(name: String)(val cypherType: CypherType = CTWildcard) exte
 
   override def withoutType: String = s"$name"
 
+  // TODO: replace with specific expr types for node var and rel var
+  def nodeType: CTNode = cypherType match {
+    case ct : CTNode => ct
+    case other => throw IllegalArgumentException(CTNode, other)
+  }
+
+  def relType: CTRelationship = cypherType match {
+    case ct : CTRelationship => ct
+    case other => throw IllegalArgumentException(CTRelationship, other)
+  }
 }
 
 final case class StartNode(rel: Expr)(val cypherType: CypherType = CTWildcard) extends Expr {

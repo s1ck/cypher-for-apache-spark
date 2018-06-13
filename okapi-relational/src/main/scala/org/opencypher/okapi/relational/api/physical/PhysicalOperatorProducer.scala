@@ -28,6 +28,7 @@ package org.opencypher.okapi.relational.api.physical
 
 import org.opencypher.okapi.api.graph.{PropertyGraph, QualifiedGraphName}
 import org.opencypher.okapi.api.table.CypherRecords
+import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
 import org.opencypher.okapi.ir.api.block.SortItem
 import org.opencypher.okapi.ir.api.expr.{Aggregator, Expr, Var}
 import org.opencypher.okapi.logical.impl._
@@ -56,6 +57,7 @@ trait PhysicalOperatorProducer[P <: PhysicalOperator[R, G, C], R <: CypherRecord
     */
   def planStart(qgnOpt: Option[QualifiedGraphName] = None, in: Option[R] = None): P
 
+  // TODO: adapt to signature
   /**
     * Scans the node set of the input graph and returns all nodes that match the given CTNode type.
     *
@@ -65,8 +67,9 @@ trait PhysicalOperatorProducer[P <: PhysicalOperator[R, G, C], R <: CypherRecord
     * @param header  resulting record header
     * @return node scan operator
     */
-  def planNodeScan(in: P, inGraph: LogicalGraph, v: Var, header: RecordHeader): P
+  def planNodeScan(in: P, inGraph: LogicalGraph, nodeType: CTNode, header: RecordHeader): P
 
+  // TODO: adapt to signature
   /**
     * Scans the relationship set of the input graph and returns all relationships that match the given CTRelationship
     * type.
@@ -77,7 +80,7 @@ trait PhysicalOperatorProducer[P <: PhysicalOperator[R, G, C], R <: CypherRecord
     * @param header  resulting record header
     * @return relationship scan operator
     */
-  def planRelationshipScan(in: P, inGraph: LogicalGraph, v: Var, header: RecordHeader): P
+  def planRelationshipScan(in: P, inGraph: LogicalGraph, relType: CTRelationship, header: RecordHeader): P
 
   /**
     * Creates an empty record set thereby disregarding the input. The records are described by the given record header.
@@ -87,27 +90,6 @@ trait PhysicalOperatorProducer[P <: PhysicalOperator[R, G, C], R <: CypherRecord
     * @return empty records operator
     */
   def planEmptyRecords(in: P, header: RecordHeader): P
-
-  /**
-    * Renames the columns identified by the given expressions to the specified aliases.
-    *
-    * @param in     previous operator
-    * @param tuples pairs of source expressions to target aliases
-    * @param header resulting record header
-    * @return Alias operator
-    */
-  def planAlias(in: P, tuples: Seq[(Expr, Var)], header: RecordHeader): P
-
-  /**
-    * Renames the column identified by the given expression to the specified alias.
-    *
-    * @param in     previous operator
-    * @param expr   expression to be aliased
-    * @param alias  alias
-    * @param header resulting record header
-    * @return Alias operator
-    */
-  def planAlias(in: P, expr: Expr, alias: Var, header: RecordHeader): P = planAlias(in, Seq(expr -> alias), header)
 
   /**
     * Drops the columns identified by the given expressions from the input records.

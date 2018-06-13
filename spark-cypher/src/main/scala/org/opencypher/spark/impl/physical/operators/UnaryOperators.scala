@@ -65,19 +65,17 @@ final case class Cache(in: CAPSPhysicalOperator) extends UnaryPhysicalOperator w
   }
 }
 
-final case class NodeScan(in: CAPSPhysicalOperator, v: Var, header: RecordHeader)
+final case class NodeScan(in: CAPSPhysicalOperator, nodeType: CTNode, header: RecordHeader)
   extends UnaryPhysicalOperator with PhysicalOperatorDebugging {
 
   override def executeUnary(prev: CAPSPhysicalResult)(implicit context: CAPSRuntimeContext): CAPSPhysicalResult = {
     val graph = prev.workingGraph
-    val records = v.cypherType match {
-      case n: CTNode => graph.nodes(v.name, n)
-      case other => throw IllegalArgumentException("Node variable", other)
-    }
+    val records = graph.nodes(nodeType)
+
     if (header != records.header) {
       throw SchemaException(
         s"""
-           |Graph schema does not match actual records returned for scan $v:
+           |Graph schema does not match actual records returned for scan $nodeType:
            |  - Computed record header based on graph schema: ${header.pretty}
            |  - Actual record header: ${records.header.pretty}
         """.stripMargin)
@@ -88,25 +86,22 @@ final case class NodeScan(in: CAPSPhysicalOperator, v: Var, header: RecordHeader
 
 final case class RelationshipScan(
   in: CAPSPhysicalOperator,
-  v: Var,
+  relType: CTRelationship,
   header: RecordHeader
 ) extends UnaryPhysicalOperator with PhysicalOperatorDebugging {
 
   override def executeUnary(prev: CAPSPhysicalResult)(implicit context: CAPSRuntimeContext): CAPSPhysicalResult = {
     val graph = prev.workingGraph
-    val records = v.cypherType match {
-      case r: CTRelationship => graph.relationships(v.name, r)
-      case other => throw IllegalArgumentException("Relationship variable", other)
-    }
+    val records = graph.relationships(relType)
     if (header != records.header) {
       throw SchemaException(
         s"""
-           |Graph schema does not match actual records returned for scan $v:
+           |Graph schema does not match actual records returned for scan type $relType:
            |  - Computed record header based on graph schema: ${header.pretty}
            |  - Actual record header: ${records.header.pretty}
         """.stripMargin)
     }
-    CAPSPhysicalResult(records, graph, v.cypherType.graph.get)
+    CAPSPhysicalResult(records, graph, prev.workingGraphName)
   }
 }
 

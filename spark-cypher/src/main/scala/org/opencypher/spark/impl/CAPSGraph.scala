@@ -27,6 +27,7 @@
 package org.opencypher.spark.impl
 
 import org.apache.spark.storage.StorageLevel
+import org.opencypher.okapi.api.graph.PropertyGraph._
 import org.opencypher.okapi.api.graph.{GraphOperations, PropertyGraph}
 import org.opencypher.okapi.api.schema._
 import org.opencypher.okapi.api.table.CypherRecords
@@ -46,7 +47,11 @@ trait CAPSGraph extends PropertyGraph with GraphOperations with Serializable {
 
   implicit def session: CAPSSession
 
+  override def nodes(nodeCypherType: CTNode): CAPSRecords = nodes(defaultNodeVarName, nodeCypherType)
+
   override def nodes(name: String, nodeCypherType: CTNode = CTNode): CAPSRecords
+
+  override def relationships(relCypherType: CTRelationship): CAPSRecords = relationships(defaultRelVarName, relCypherType)
 
   override def relationships(name: String, relCypherType: CTRelationship = CTRelationship): CAPSRecords
 
@@ -114,7 +119,11 @@ trait CAPSGraph extends PropertyGraph with GraphOperations with Serializable {
     CAPSRecords(updatedHeader, updatedData)(session)
   }
 
-  protected def alignRecords(records: Seq[CAPSRecords], targetVar: Var, targetHeader: RecordHeader): Option[CAPSRecords] = {
+  protected def alignRecords(
+    records: Seq[CAPSRecords],
+    targetVar: Var,
+    targetHeader: RecordHeader
+  ): Option[CAPSRecords] = {
     // Align entity tables to target header
     val alignedRecords = records.map(_.alignWith(targetVar, targetHeader))
     // Ensure a consistent column order for the subsequent union
@@ -134,17 +143,20 @@ object CAPSGraph {
     create(Set(0), None, nodeTable, entityTables: _*)
   }
 
-  def create(maybeSchema: Option[CAPSSchema], nodeTable: CAPSNodeTable, entityTables: CAPSEntityTable*)(implicit caps: CAPSSession): CAPSGraph = {
+  def create(maybeSchema: Option[CAPSSchema], nodeTable: CAPSNodeTable, entityTables: CAPSEntityTable*)
+    (implicit caps: CAPSSession): CAPSGraph = {
     create(Set(0), maybeSchema, nodeTable, entityTables: _*)
   }
 
-  def create(tags: Set[Int], maybeSchema: Option[CAPSSchema], nodeTable: CAPSNodeTable, entityTables: CAPSEntityTable*)(implicit caps: CAPSSession): CAPSGraph = {
+  def create(tags: Set[Int], maybeSchema: Option[CAPSSchema], nodeTable: CAPSNodeTable, entityTables: CAPSEntityTable*)
+    (implicit caps: CAPSSession): CAPSGraph = {
     val allTables = nodeTable +: entityTables
     val schema = maybeSchema.getOrElse(allTables.map(_.schema).reduce[Schema](_ ++ _).asCaps)
     new CAPSScanGraph(allTables, schema, tags)
   }
 
-  def create(records: CypherRecords, schema: CAPSSchema, tags: Set[Int] = Set(0))(implicit caps: CAPSSession): CAPSGraph = {
+  def create(records: CypherRecords, schema: CAPSSchema, tags: Set[Int] = Set(0))
+    (implicit caps: CAPSSession): CAPSGraph = {
     val capsRecords = records.asCaps
     new CAPSPatternGraph(capsRecords, schema, tags)
   }

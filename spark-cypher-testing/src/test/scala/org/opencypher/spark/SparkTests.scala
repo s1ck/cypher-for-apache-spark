@@ -28,9 +28,44 @@ package org.opencypher.spark
 
 import org.apache.spark.sql.execution.SparkPlan
 import org.opencypher.okapi.impl.util.Measurement
+import org.opencypher.okapi.relational.api.configuration.CoraConfiguration.PrintPhysicalPlan
 import org.opencypher.spark.testing.CAPSTestSuite
+import org.opencypher.spark.testing.fixture.GraphConstructionFixture
 
-class SparkTests extends CAPSTestSuite {
+import scala.io.StdIn
+
+class SparkTests extends CAPSTestSuite with GraphConstructionFixture {
+
+//  it("caches entity scans") {
+////    PrintPhysicalPlan.set
+//
+//    val graph = initGraph(
+//      """
+//        |CREATE (a:Person { name: 'Alice' })
+//        |CREATE (b:Person { name: 'Bob' })
+//        |CREATE (c:Book { name: '1984' })
+//        |CREATE (a)-[e:KNOWS]->(b)
+//      """.stripMargin)
+//
+//    val query =
+//      """
+//        |MATCH (a:Person)-[:KNOWS]->(b:Person)
+//        |RETURN a.name, b.name
+//      """.stripMargin
+//
+//    val result = graph.cypher(query)
+//
+//    import org.opencypher.spark.impl.CAPSConverters._
+//
+//
+//
+//    println(result.getRecords.asCaps.df.queryExecution.executedPlan)
+//
+//    result.show
+//
+//    StdIn.readLine()
+//
+//  }
 
   // Example for: https://issues.apache.org/jira/browse/SPARK-23855
   ignore("should correctly perform a join after a cross") {

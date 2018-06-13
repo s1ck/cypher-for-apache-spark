@@ -27,6 +27,7 @@
 package org.opencypher.spark.impl.physical
 
 import org.opencypher.okapi.api.graph.QualifiedGraphName
+import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
 import org.opencypher.okapi.api.value.CypherValue._
 import org.opencypher.okapi.ir.api.block.SortItem
 import org.opencypher.okapi.ir.api.expr._
@@ -95,14 +96,14 @@ final class CAPSPhysicalOperatorProducer(implicit caps: CAPSSession)
   override def planNodeScan(
     in: CAPSPhysicalOperator,
     inGraph: LogicalGraph,
-    v: Var,
-    header: RecordHeader): CAPSPhysicalOperator = operators.NodeScan(in, v, header)
+    nodeType: CTNode,
+    header: RecordHeader): CAPSPhysicalOperator = operators.NodeScan(in, nodeType, header)
 
   override def planRelationshipScan(
     in: CAPSPhysicalOperator,
     inGraph: LogicalGraph,
-    v: Var,
-    header: RecordHeader): CAPSPhysicalOperator = operators.RelationshipScan(in, v, header)
+    relType: CTRelationship,
+    header: RecordHeader): CAPSPhysicalOperator = operators.RelationshipScan(in, relType, header)
 
   override def planAlias(in: CAPSPhysicalOperator, aliases: Seq[(Expr, Var)], header: RecordHeader): CAPSPhysicalOperator =
     operators.Alias(in, aliases, header)

@@ -64,7 +64,9 @@ object CAPSScanGraphFactory extends CAPSTestGraphFactory {
           Row.fromSeq(Seq(node.id) ++ propertyValues)
         }
 
-      val records = caps.sparkSession.createDataFrame(rows.asJava, structType).toDF(header: _*)
+      val records = caps.sparkSession.createDataFrame(rows.asJava, structType).toDF(header: _*).cache
+
+      println(records.queryExecution.executedPlan)
 
       CAPSNodeTable.fromMapping(NodeMapping
         .on(tableEntityIdKey)

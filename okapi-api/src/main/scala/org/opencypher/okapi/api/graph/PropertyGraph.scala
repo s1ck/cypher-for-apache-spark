@@ -26,10 +26,19 @@
  */
 package org.opencypher.okapi.api.graph
 
+import org.opencypher.okapi.api.graph.PropertyGraph._
 import org.opencypher.okapi.api.schema.Schema
 import org.opencypher.okapi.api.table.CypherRecords
 import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
 import org.opencypher.okapi.api.value.CypherValue.CypherMap
+
+object PropertyGraph {
+
+  var defaultNodeVarName = "n"
+
+  var defaultRelVarName = "r"
+
+}
 
 /**
   * A Property Graph as defined by the openCypher Property Graph Model.
@@ -58,6 +67,7 @@ trait PropertyGraph extends GraphOperations {
     */
   def session: CypherSession
 
+  def nodes(nodeCypherType: CTNode): CypherRecords = nodes(defaultNodeVarName, nodeCypherType)
   /**
     * Returns all nodes in this graph with the given [[org.opencypher.okapi.api.types.CTNode]] type.
     *
@@ -66,6 +76,8 @@ trait PropertyGraph extends GraphOperations {
     * @return table of nodes of the specified type
     */
   def nodes(name: String, nodeCypherType: CTNode = CTNode): CypherRecords
+
+  def relationships(relCypherType: CTRelationship): CypherRecords = relationships(defaultRelVarName, relCypherType)
 
   /**
     * Returns all relationships in this graph with the given [[org.opencypher.okapi.api.types.CTRelationship]] type.
