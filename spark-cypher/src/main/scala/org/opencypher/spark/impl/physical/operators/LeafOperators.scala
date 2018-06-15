@@ -26,7 +26,9 @@
  */
 package org.opencypher.spark.impl.physical.operators
 
-import org.opencypher.okapi.api.graph.QualifiedGraphName
+import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
+import org.opencypher.okapi.impl.exception.{IllegalArgumentException, SchemaException}
+import org.opencypher.okapi.ir.api.expr.Var
 import org.opencypher.okapi.relational.impl.table.RecordHeader
 import org.opencypher.spark.api.CAPSSession
 import org.opencypher.spark.impl.CAPSRecords
@@ -41,19 +43,86 @@ private[spark] abstract class LeafPhysicalOperator extends CAPSPhysicalOperator 
   def executeLeaf()(implicit context: CAPSRuntimeContext): CAPSPhysicalResult
 }
 
-final case class Start(qgn: QualifiedGraphName, recordsOpt: Option[CAPSRecords], header: RecordHeader)
+case object Empty extends LeafPhysicalOperator with PhysicalOperatorDebugging {
+
+  override def executeLeaf()(implicit context: CAPSRuntimeContext): CAPSPhysicalResult =
+    CAPSPhysicalResult(
+      CAPSRecords.empty(header)(context.session),
+      resolve(context.session.emptyGraphQgn),
+      context.session.emptyGraphQgn)
+
+  override val header: RecordHeader = RecordHeader.empty
+}
+
+final case class EmptyWithHeader(header: RecordHeader)(implicit caps: CAPSSession)
+  extends LeafPhysicalOperator with PhysicalOperatorDebugging {
+
+  override def executeLeaf()(implicit context: CAPSRuntimeContext): CAPSPhysicalResult =
+    CAPSPhysicalResult(CAPSRecords.empty(header), resolve(context.session.emptyGraphQgn), context.session.emptyGraphQgn)
+}
+
+case object Unit extends LeafPhysicalOperator with PhysicalOperatorDebugging {
+  override def executeLeaf()(implicit context: CAPSRuntimeContext): CAPSPhysicalResult =
+    CAPSPhysicalResult(
+      CAPSRecords.unit()(context.session),
+      resolve(context.session.emptyGraphQgn),
+      context.session.emptyGraphQgn)
+
+  override def header: RecordHeader = RecordHeader.empty
+}
+
+final case class DrivingTable(records: CAPSRecords, header: RecordHeader)
   (implicit caps: CAPSSession) extends LeafPhysicalOperator with PhysicalOperatorDebugging {
 
   override def executeLeaf()(implicit context: CAPSRuntimeContext): CAPSPhysicalResult = {
-    val records = recordsOpt.getOrElse(CAPSRecords.unit())
-    CAPSPhysicalResult(records, resolve(qgn), qgn)
+    CAPSPhysicalResult(records, resolve(context.session.emptyGraphQgn), context.session.emptyGraphQgn)
   }
 
   override def toString: String = {
-    val graphArg = qgn.toString
-    val recordsArg = recordsOpt.map(_.toString)
-    val allArgs = List(recordsArg, graphArg).mkString(", ")
-    s"Start($allArgs)"
+    s"DrivingTable(${records.logicalColumns.getOrElse(records.physicalColumns).mkString(", ")})"
   }
 
 }
+
+// TODO: move to special physical operator with variable number of input operators
+final case class Scan(v: Var, header: RecordHeader, maybePatternGraph: Option[CAPSPhysicalOperator] = None)
+  extends CAPSPhysicalOperator {
+
+  override val children = maybePatternGraph.toArray
+
+  override def withNewChildren(newChildren: Array[CAPSPhysicalOperator]): CAPSPhysicalOperator = {
+    newChildren.toSeq match {
+      case Seq() => copy(maybePatternGraph = None)
+      case Seq(one) => copy(maybePatternGraph = Some(one))
+      case _ => throw IllegalArgumentException("0 or 1 children", newChildren.mkString(", "))
+    }
+  }
+
+  override def execute(implicit context: CAPSRuntimeContext): CAPSPhysicalResult = {
+    // if there is a pattern graph it is created before performing the scan on it
+    val maybeExecuted = maybePatternGraph.map(_.execute)
+
+    val graphName = v.cypherType.graph.get
+
+    val workingGraph = maybeExecuted match {
+      case Some(physicalResult) => physicalResult.workingGraph
+      case None => resolve(graphName)
+    }
+
+    val records = v.cypherType match {
+      case n: CTNode => workingGraph.nodes(v.name, n)
+      case r: CTRelationship => workingGraph.relationships(v.name, r)
+      case other => throw IllegalArgumentException("Node variable", other)
+    }
+    if (header != records.header) {
+      throw SchemaException(
+        s"""
+           |Graph schema does not match actual records returned for scan $v:
+           |  - Computed record header based on graph schema: ${header.pretty}
+           |  - Actual record header: ${records.header.pretty}
+        """.stripMargin)
+    }
+    CAPSPhysicalResult(records, workingGraph, graphName)
+  }
+}
+

@@ -48,10 +48,16 @@ sealed abstract class LogicalOperator extends AbstractTreeNode[LogicalOperator] 
   }
 }
 
-trait EmptyFields extends LogicalOperator {
+trait EmptyFields {
   self: LogicalOperator =>
 
   override val fields: Set[Var] = Set.empty
+}
+
+trait EmptyGraph {
+  self: LogicalOperator =>
+
+  override val graph: LogicalGraph = LogicalEmptyGraph
 }
 
 trait LogicalGraph {
@@ -64,6 +70,13 @@ trait LogicalGraph {
 
 final case class LogicalCatalogGraph(qualifiedGraphName: QualifiedGraphName, schema: Schema) extends LogicalGraph {
   override protected def args: String = qualifiedGraphName.toString
+}
+
+case object LogicalEmptyGraph extends LogicalGraph {
+
+  override def schema: Schema = Schema.empty
+
+  override protected def args: String = ""
 }
 
 final case class LogicalPatternGraph(
@@ -122,13 +135,12 @@ sealed abstract class BinaryLogicalOperator extends LogicalOperator {
 
 sealed abstract class LogicalLeafOperator extends LogicalOperator
 
-final case class NodeScan(node: Var, in: LogicalOperator, solved: SolvedQueryModel)
-  extends StackingLogicalOperator {
+final case class NodeScan(node: Var, graph: LogicalGraph, solved: SolvedQueryModel) extends LogicalLeafOperator {
   require(node.cypherType.isInstanceOf[CTNode], "A variable for a node scan needs to have type CTNode")
 
   def labels: Set[String] = node.cypherType.asInstanceOf[CTNode].labels
 
-  override val fields: Set[Var] = in.fields + node
+  override val fields: Set[Var] = Set(node)
 }
 
 final case class Distinct(fields: Set[Var], in: LogicalOperator, solved: SolvedQueryModel)
@@ -303,7 +315,6 @@ final case class FromGraph(
   }
 }
 
-final case class EmptyRecords(fields: Set[Var], in: LogicalOperator, solved: SolvedQueryModel)
-  extends StackingLogicalOperator
+final case class DrivingTable(solved: SolvedQueryModel) extends LogicalLeafOperator with EmptyFields with EmptyGraph
 
-final case class Start(graph: LogicalGraph, solved: SolvedQueryModel) extends LogicalLeafOperator with EmptyFields
+case class Empty(fields: Set[Var], graph: LogicalGraph, solved: SolvedQueryModel) extends LogicalLeafOperator

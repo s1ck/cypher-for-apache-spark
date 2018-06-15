@@ -32,14 +32,13 @@ import org.apache.spark.sql.types.{IntegerType, StructField, StructType}
 import org.apache.spark.sql.{Column, DataFrame, Row}
 import org.opencypher.okapi.ir.api.expr.{Expr, Subtract, Var}
 import org.opencypher.okapi.relational.impl.table.RecordHeader
-import org.opencypher.okapi.testing.BaseTestSuite
 import org.opencypher.spark.impl.SparkSQLExprMapper._
-import org.opencypher.spark.impl.physical.CAPSRuntimeContext
+import org.opencypher.spark.testing.CAPSTestSuite
 import org.opencypher.spark.testing.fixture.SparkSessionFixture
 
 import scala.language.implicitConversions
 
-class SparkSQLExprMapperTest extends BaseTestSuite with SparkSessionFixture {
+class SparkSQLExprMapperTest extends CAPSTestSuite with SparkSessionFixture {
 
   val vA = Var("a")()
   val vB = Var("b")()
@@ -53,7 +52,7 @@ class SparkSQLExprMapperTest extends BaseTestSuite with SparkSessionFixture {
   }
 
   private def convert(expr: Expr, header: RecordHeader = header): Column = {
-    expr.asSparkSQLExpr(header, df, CAPSRuntimeContext.empty)
+    expr.asSparkSQLExpr(header, df, context)
   }
   val df: DataFrame = sparkSession.createDataFrame(
     Collections.emptyList[Row](),

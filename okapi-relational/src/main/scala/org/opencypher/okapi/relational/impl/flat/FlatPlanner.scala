@@ -26,12 +26,15 @@
  */
 package org.opencypher.okapi.relational.impl.flat
 
+import org.opencypher.okapi.api.types.{CTNode, CTNodeOrNull, CTRelationshipOrNull}
 import org.opencypher.okapi.api.value.CypherValue._
 import org.opencypher.okapi.impl.exception.NotImplementedException
+import org.opencypher.okapi.ir.api.expr.Var
 import org.opencypher.okapi.ir.api.util.DirectCompilationStage
 import org.opencypher.okapi.logical.impl.LogicalOperator
 import org.opencypher.okapi.logical.{impl => logical}
 import org.opencypher.okapi.relational.impl.table.RecordHeader
+import org.opencypher.okapi.relational.api.schema.RelationalSchema._
 
 final case class FlatPlannerContext(parameters: CypherMap, drivingTableHeader: RecordHeader)
 
@@ -54,8 +57,8 @@ class FlatPlanner extends DirectCompilationStage[LogicalOperator, FlatOperator, 
       case logical.Distinct(fields, in, _) =>
         producer.distinct(fields, process(in))
 
-      case logical.NodeScan(node, in, _) =>
-        producer.nodeScan(node, process(in))
+      case logical.NodeScan(node, logicalGraph, _) =>
+        NodeScan(node, logicalGraph, logicalGraph.schema.headerForNode(node))
 
       case logical.Unwind(list, item, in, _) =>
         producer.unwind(list, item, process(in))
@@ -75,20 +78,15 @@ class FlatPlanner extends DirectCompilationStage[LogicalOperator, FlatOperator, 
       case logical.ValueJoin(lhs, rhs, predicates, _) =>
         producer.valueJoin(process(lhs), process(rhs), predicates)
 
-      case logical.EmptyRecords(fields, in, _) =>
-        producer.planEmptyRecords(fields, process(in))
-
-      case logical.Start(graph, _) =>
-        producer.planStart(graph, context.drivingTableHeader)
+      case logical.DrivingTable(_) =>
+        DrivingTable(context.drivingTableHeader)
 
       case logical.FromGraph(graph, in, _) =>
         producer.planFromGraph(graph, process(in))
 
       case logical.BoundedVarLengthExpand(source, edgeList, target, direction, lower, upper, sourceOp, targetOp, _) =>
         val initVarExpand = producer.initVarExpand(source, edgeList, process(sourceOp))
-        val edgeScan = producer.varLengthRelationshipScan(
-          edgeList,
-          producer.planStart(input.graph, RecordHeader.empty))
+        val edgeScan = producer.varLengthRelationshipScan(edgeList, input.graph)
 
         producer.boundedVarExpand(
           edgeScan.rel,
@@ -119,6 +117,11 @@ class FlatPlanner extends DirectCompilationStage[LogicalOperator, FlatOperator, 
 
       case logical.ReturnGraph(in, _) =>
         producer.returnGraph(process(in))
+
+      case logical.Empty(fields, graph, _) if fields.nonEmpty =>
+        EmptyRecords(fields.foldLeft(RecordHeader.empty)((acc, field) => acc ++ graph.schema.headerForEntity(field)))
+
+      case logical.Empty(_, _, _) => Empty
 
       case x =>
         throw NotImplementedException(s"Flat planning not implemented for $x")

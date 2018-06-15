@@ -33,8 +33,11 @@ import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.ir.api.{IRField, Label, PropertyKey, RelType}
 import org.opencypher.okapi.ir.test._
 import org.opencypher.okapi.ir.test.support.MatchHelper._
-import org.opencypher.okapi.logical.impl.{Directed, LogicalGraph, LogicalOperatorProducer, Undirected}
+import org.opencypher.okapi.logical.impl._
+import org.opencypher.okapi.logical.{impl => logical}
+import org.opencypher.okapi.relational.api.schema.RelationalSchema._
 import org.opencypher.okapi.relational.impl.table.RecordHeader
+import org.opencypher.okapi.relational.impl.{flat => relational}
 import org.opencypher.okapi.testing.BaseTestSuite
 
 import scala.language.implicitConversions
@@ -57,20 +60,20 @@ class FlatPlannerTest extends BaseTestSuite {
   val mkFlat = new FlatOperatorProducer()
   val flatPlanner = new FlatPlanner
 
-  val logicalStartOperator = mkLogical.planStart(TestGraph(schema), Set.empty)
-  val flatStartOperator = mkFlat.planStart(TestGraph(schema), RecordHeader.empty)
+  val logicalGraph = TestGraph(schema)
+  val logicalEmptyOperator = logical.Empty(Set.empty, LogicalEmptyGraph, SolvedQueryModel.empty)
 
   test("projecting a new expression") {
     val expr = Subtract('a, 'b)()
-    val result = flatPlanner.process(mkLogical.projectField(expr, 'c, logicalStartOperator))
+    val result = flatPlanner.process(mkLogical.projectField(expr, 'c, logicalEmptyOperator))
     val headerExpressions = result.header.expressions
 
-    result should equalWithTracing(mkFlat.project(expr -> Some('c), flatStartOperator))
+    result should equalWithTracing(mkFlat.project(expr -> Some('c), relational.Empty))
     headerExpressions should equalWithTracing(Set(expr, Var("c")()))
   }
 
   test("construct load graph") {
-    flatPlanner.process(logicalStartOperator) should equalWithTracing(flatStartOperator)
+    flatPlanner.process(logicalEmptyOperator) should equalWithTracing(relational.Empty)
   }
 
   test("Construct node scan") {
@@ -354,14 +357,14 @@ class FlatPlannerTest extends BaseTestSuite {
   }
 
   private def logicalNodeScan(nodeField: String, labelNames: String*) =
-    mkLogical.planNodeScan(IRField(nodeField)(CTNode(labelNames.toSet)), logicalStartOperator)
+    mkLogical.planNodeScan(IRField(nodeField)(CTNode(labelNames.toSet)), logicalGraph)
 
   private def flatNodeScan(node: Var): NodeScan =
-    mkFlat.nodeScan(node, flatStartOperator)
+    relational.NodeScan(node, logicalGraph, logicalGraph.schema.headerForNode(node))
 
   private def flatNodeScan(node: String, labelNames: String*): NodeScan =
     flatNodeScan(Var(node)(CTNode(labelNames.toSet)))
 
   private def flatVarLengthEdgeScan(edgeList: Var) =
-    mkFlat.varLengthRelationshipScan(edgeList, flatStartOperator)
+    mkFlat.varLengthRelationshipScan(edgeList, logicalGraph)
 }

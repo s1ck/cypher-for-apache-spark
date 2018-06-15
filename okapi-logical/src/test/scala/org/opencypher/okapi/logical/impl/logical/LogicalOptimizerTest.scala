@@ -68,11 +68,8 @@ class LogicalOptimizerTest extends IrTestSuite {
       List(Var("a")(CTNode(Set("Animal")))),
       NodeScan(
         Var("a")(CTNode(Set("Animal"))),
-        Start(
-          animalGraph,
-          emptySqm
-        ),
-        SolvedQueryModel(Set(), Set(HasLabel(Var("a")(CTNode(Set("Animal"))), Label("Animal"))(CTBoolean)))
+        animalGraph,
+        SolvedQueryModel(Set(IRField("a")(CTNode)), Set(HasLabel(Var("a")(CTNode(Set("Animal"))), Label("Animal"))(CTBoolean)))
       ),
       SolvedQueryModel(Set(IRField("a")(CTNode)), Set(HasLabel(Var("a")(CTNode), Label("Animal"))(CTBoolean)))
     )
@@ -89,10 +86,10 @@ class LogicalOptimizerTest extends IrTestSuite {
 
     val expected = Select(
       List(Var("a")(CTNode(Set("Animal")))),
-      EmptyRecords(
+      Empty(
         Set(Var("a")(CTNode(Set("Animal")))),
-        Start(logicalGraph, emptySqm),
-        SolvedQueryModel(Set(), Set(HasLabel(Var("a")(CTNode(Set("Animal"))), Label("Animal"))(CTBoolean)))
+        logicalGraph,
+        SolvedQueryModel(Set(IRField("a")(CTNode)), Set(HasLabel(Var("a")(CTNode(Set("Animal"))), Label("Animal"))(CTBoolean)))
       ),
       SolvedQueryModel(Set(IRField("a")(CTNode)), Set(HasLabel(Var("a")(CTNode), Label("Animal"))(CTBoolean)))
     )
@@ -112,11 +109,11 @@ class LogicalOptimizerTest extends IrTestSuite {
 
     val expected = Select(
       List(Var("a")(CTNode(Set("Animal", "Astronaut")))),
-      EmptyRecords(
+      Empty(
         Set(Var("a")(CTNode(Set("Astronaut", "Animal")))),
-        Start(logicalGraph, emptySqm),
+        logicalGraph,
         SolvedQueryModel(
-          Set(),
+          Set(IRField("a")(CTNode)),
           Set(
             HasLabel(Var("a")(CTNode(Set("Astronaut", "Animal"))), Label("Astronaut"))(CTBoolean),
             HasLabel(Var("a")(CTNode(Set("Astronaut", "Animal"))), Label("Animal"))(CTBoolean)

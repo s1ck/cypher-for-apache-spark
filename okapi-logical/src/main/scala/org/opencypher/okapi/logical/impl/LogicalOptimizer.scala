@@ -53,19 +53,19 @@ object LogicalOptimizer extends DirectCompilationStage[LogicalOperator, LogicalO
   }
 
   def pushLabelsIntoScans(labelMap: Map[Var, Set[String]]): PartialFunction[LogicalOperator, LogicalOperator] = {
-    case ns@NodeScan(v@Var(name), in, solved) =>
+    case ns@NodeScan(v@Var(name), logicalGraph, solved) =>
       val updatedLabels = labelMap(v)
       val updatedVar = Var(name)(CTNode(ns.labels ++ updatedLabels, v.cypherType.graph))
-      val updatedSolved = in.solved.withPredicates(updatedLabels.map(l => HasLabel(v, Label(l))(CTBoolean)).toSeq: _*)
-      NodeScan(updatedVar, in, updatedSolved)
+      val updatedSolved = solved.withPredicates(updatedLabels.map(l => HasLabel(v, Label(l))(CTBoolean)).toSeq: _*)
+      NodeScan(updatedVar, logicalGraph, updatedSolved)
     case Filter(_: HasLabel, in, _) => in
   }
 
   def discardScansForNonexistentLabels: PartialFunction[LogicalOperator, LogicalOperator] = {
-    case scan@NodeScan(v, in, _) =>
-      def graphSchema = in.graph.schema
+    case scan@NodeScan(v, logicalGraph, _) =>
+      def graphSchema = logicalGraph.schema
 
-      def emptyRecords = EmptyRecords(Set(v), in, scan.solved)
+      def emptyRecords = Empty(Set(v), logicalGraph, scan.solved)
 
       if ((scan.labels.size == 1 && !graphSchema.labels.contains(scan.labels.head)) ||
         (scan.labels.size > 1 && !graphSchema.labelCombinations.combos.exists(scan.labels.subsetOf(_)))) {

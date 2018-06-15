@@ -28,6 +28,7 @@ package org.opencypher.spark.examples
 
 import org.neo4j.harness.ServerControls
 import org.opencypher.okapi.api.graph.Namespace
+import org.opencypher.okapi.relational.api.configuration.CoraConfiguration.PrintPhysicalPlan
 import org.opencypher.spark.api.CAPSSession
 import org.opencypher.spark.api.io.csv.CsvDataSource
 import org.opencypher.spark.api.io.neo4j.CommunityNeo4jGraphDataSource
@@ -46,6 +47,8 @@ object RecommendationExample extends ConsoleApp {
   // Start two Neo4j instances and populate them with social network data
   implicit val neo4jServerUS: ServerControls = startNeo4j(socialNetworkUS)
   implicit val neo4jServerEU: ServerControls = startNeo4j(socialNetworkEU)
+
+  PrintPhysicalPlan.set
 
   // Register Graph Data Sources (GDS)
 

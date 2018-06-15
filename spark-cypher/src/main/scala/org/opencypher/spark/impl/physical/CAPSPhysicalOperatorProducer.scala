@@ -45,19 +45,25 @@ case class CAPSPhysicalPlannerContext(
   catalog: QueryCatalog,
   inputRecords: CAPSRecords,
   parameters: CypherMap,
-  constructedGraphPlans: collection.mutable.Map[QualifiedGraphName, CAPSPhysicalOperator]) extends PhysicalPlannerContext[CAPSPhysicalOperator, CAPSRecords]
+  constructedGraphPlans: collection.mutable.Map[QualifiedGraphName, CAPSPhysicalOperator]) extends PhysicalPlannerContext[DataFrameTable, CAPSPhysicalOperator, CAPSRecords]
 
 object CAPSPhysicalPlannerContext {
   def from(
     catalog: QueryCatalog,
     inputRecords: CAPSRecords,
-    parameters: CypherMap)(implicit session: CAPSSession): PhysicalPlannerContext[CAPSPhysicalOperator, CAPSRecords] = {
+    parameters: CypherMap)(implicit session: CAPSSession): PhysicalPlannerContext[DataFrameTable, CAPSPhysicalOperator, CAPSRecords] = {
     CAPSPhysicalPlannerContext(session, catalog, inputRecords, parameters, collection.mutable.Map.empty)
   }
 }
 
 final class CAPSPhysicalOperatorProducer(implicit caps: CAPSSession)
   extends PhysicalOperatorProducer[DataFrameTable, CAPSPhysicalOperator, CAPSRecords, CAPSGraph, CAPSRuntimeContext] {
+
+  override def planUnit: CAPSPhysicalOperator = operators.Unit
+
+  override def planEmpty: CAPSPhysicalOperator = operators.Empty
+
+  override def planEmptyWithHeader(header: RecordHeader): CAPSPhysicalOperator = operators.EmptyWithHeader(header)
 
   override def planCartesianProduct(
     lhs: CAPSPhysicalOperator,
@@ -83,30 +89,23 @@ final class CAPSPhysicalOperatorProducer(implicit caps: CAPSSession)
     operators.ReturnGraph(in)
   }
 
-  override def planEmptyRecords(in: CAPSPhysicalOperator, header: RecordHeader): CAPSPhysicalOperator =
-    operators.EmptyRecords(in, header)
+  override def planDrivingTable(drivingRecords: CAPSRecords, header: RecordHeader): CAPSPhysicalOperator =
+    operators.DrivingTable(drivingRecords, header)
 
-  override def planStart(
-    qgnOpt: Option[QualifiedGraphName] = None,
-    in: Option[CAPSRecords] = None,
-    header: RecordHeader): CAPSPhysicalOperator =
-    operators.Start(qgnOpt.getOrElse(caps.emptyGraphQgn), in, header)
-
-  // TODO: Make catalog usage consistent between Start/FROM GRAPH
-  override def planFromGraph(in: CAPSPhysicalOperator, g: LogicalCatalogGraph): CAPSPhysicalOperator =
-    operators.FromGraph(in, g)
+  override def planFromGraph(maybeIn: Option[CAPSPhysicalOperator], qgn: QualifiedGraphName): CAPSPhysicalOperator = maybeIn match {
+    case Some(in) => operators.FromGraph(in, qgn)
+    case None => operators.FromGraph(operators.Empty, qgn)
+  }
 
   override def planNodeScan(
-    in: CAPSPhysicalOperator,
-    inGraph: LogicalGraph,
     v: Var,
-    header: RecordHeader): CAPSPhysicalOperator = operators.NodeScan(in, v, header)
+    header: RecordHeader,
+    maybePatternGraph: Option[CAPSPhysicalOperator] = None): CAPSPhysicalOperator = operators.Scan(v, header, maybePatternGraph)
 
   override def planRelationshipScan(
-    in: CAPSPhysicalOperator,
-    inGraph: LogicalGraph,
     v: Var,
-    header: RecordHeader): CAPSPhysicalOperator = operators.RelationshipScan(in, v, header)
+    header: RecordHeader,
+    maybePatternGraph: Option[CAPSPhysicalOperator] = None): CAPSPhysicalOperator = operators.Scan(v, header, maybePatternGraph)
 
   override def planAlias(in: CAPSPhysicalOperator, aliases: Seq[(Expr, Var)], header: RecordHeader): CAPSPhysicalOperator =
     operators.Alias(in, aliases, header)
@@ -116,10 +115,12 @@ final class CAPSPhysicalOperatorProducer(implicit caps: CAPSSession)
 
   override def planConstructGraph(
     in: CAPSPhysicalOperator,
+    construct: LogicalPatternGraph): CAPSPhysicalOperator = operators.ConstructGraph(in, construct)
+
+  override def planConstructOnGraph(
+    in: CAPSPhysicalOperator,
     onGraph: CAPSPhysicalOperator,
-    construct: LogicalPatternGraph): CAPSPhysicalOperator = {
-    operators.ConstructGraph(in, onGraph, construct)
-  }
+    construct: LogicalPatternGraph): CAPSPhysicalOperator = operators.ConstructOnGraph(in, onGraph, construct)
 
   override def planAggregate(in: CAPSPhysicalOperator, group: Set[Var], aggregations: Set[(Var, Aggregator)], header: RecordHeader): CAPSPhysicalOperator = operators.Aggregate(in, aggregations, group, header)
 

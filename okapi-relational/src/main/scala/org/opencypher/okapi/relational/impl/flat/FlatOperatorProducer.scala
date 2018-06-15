@@ -72,18 +72,6 @@ class FlatOperatorProducer(implicit context: FlatPlannerContext) {
     Distinct(fields, in, in.header)
   }
 
-  /**
-    * This acts like a leaf operator even though it has an ancestor in the tree.
-    * That means that it will discard any incoming fields from the ancestor header (assumes it is empty)
-    */
-  def nodeScan(node: Var, prev: FlatOperator): NodeScan = {
-    NodeScan(node, prev, prev.sourceGraph.schema.headerForNode(node))
-  }
-
-  def relationshipScan(rel: Var, prev: FlatOperator): RelationshipScan = {
-    RelationshipScan(rel, prev, prev.sourceGraph.schema.headerForRelationship(rel))
-  }
-
   @tailrec
   private def relTypeFromList(t: CypherType): Set[String] = {
     t match {
@@ -93,10 +81,10 @@ class FlatOperatorProducer(implicit context: FlatPlannerContext) {
     }
   }
 
-  def varLengthRelationshipScan(relationshipList: Var, prev: FlatOperator): RelationshipScan = {
+  def varLengthRelationshipScan(relationshipList: Var, graph: LogicalGraph): RelationshipScan = {
     val types = relTypeFromList(relationshipList.cypherType)
-    val edge = FreshVariableNamer(relationshipList.name + "extended", CTRelationship(types, relationshipList.cypherType.graph))
-    relationshipScan(edge, prev)
+    val rel = FreshVariableNamer(relationshipList.name + "extended", CTRelationship(types, relationshipList.cypherType.graph))
+    RelationshipScan(rel, graph, graph.schema.headerForRelationship(rel))
   }
 
   def aggregate(aggregations: Set[(Var, Aggregator)], group: Set[Var], in: FlatOperator): Aggregate = {
@@ -159,14 +147,6 @@ class FlatOperatorProducer(implicit context: FlatPlannerContext) {
 
   def planFromGraph(graph: LogicalGraph, prev: FlatOperator): FromGraph = {
     FromGraph(graph, prev)
-  }
-
-  def planEmptyRecords(fields: Set[Var], prev: FlatOperator): EmptyRecords = {
-    EmptyRecords(prev, RecordHeader.from(fields))
-  }
-
-  def planStart(graph: LogicalGraph, header: RecordHeader): Start = {
-    Start(graph, header)
   }
 
   def initVarExpand(source: Var, edgeList: Var, in: FlatOperator): InitVarExpand = {

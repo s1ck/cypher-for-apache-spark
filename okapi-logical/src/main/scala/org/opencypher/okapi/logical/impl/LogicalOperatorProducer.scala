@@ -79,8 +79,8 @@ class LogicalOperatorProducer {
     ExpandInto(source, rel, target, direction, sourcePlan, sourcePlan.solved.solveRelationship(rel))
   }
 
-  def planNodeScan(node: IRField, prev: LogicalOperator): NodeScan = {
-    NodeScan(node, prev, prev.solved.withField(node))
+  def planNodeScan(node: IRField, graph: LogicalGraph, ): NodeScan = {
+    NodeScan(node, graph, SolvedQueryModel(Set(node)))
   }
 
   def planFilter(expr: Expr, prev: LogicalOperator): Filter = {
@@ -132,11 +132,8 @@ class LogicalOperatorProducer {
     FromGraph(graph, prev, prev.solved)
   }
 
-  def planStart(graph: LogicalGraph, fields: Set[Var]): Start = {
-    val irFields = fields.map { v =>
-      IRField(v.name)(v.cypherType)
-    }
-    Start(graph, SolvedQueryModel(irFields))
+  def planDrivingTable(fields: Set[Var]): DrivingTable = {
+    DrivingTable(SolvedQueryModel(fields.map { v => IRField(v.name)(v.cypherType)}))
   }
 
   def planOrderBy(sortItems: Seq[SortItem[Expr]], prev: LogicalOperator): OrderBy = {

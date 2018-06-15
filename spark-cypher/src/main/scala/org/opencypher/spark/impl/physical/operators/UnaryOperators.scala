@@ -27,9 +27,9 @@
 package org.opencypher.spark.impl.physical.operators
 
 import org.apache.spark.sql._
-import org.opencypher.okapi.api.types._
+import org.opencypher.okapi.api.graph.QualifiedGraphName
 import org.opencypher.okapi.api.value.CypherValue._
-import org.opencypher.okapi.impl.exception.{IllegalArgumentException, NotImplementedException, SchemaException}
+import org.opencypher.okapi.impl.exception.{IllegalArgumentException, NotImplementedException}
 import org.opencypher.okapi.ir.api.block.SortItem
 import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.logical.impl._
@@ -54,6 +54,16 @@ private[spark] abstract class UnaryPhysicalOperator extends CAPSPhysicalOperator
   def executeUnary(prev: CAPSPhysicalResult)(implicit context: CAPSRuntimeContext): CAPSPhysicalResult
 }
 
+// TODO: get rid of working graph since each CypherType knows its graph
+final case class SetWorkingGraph(in: CAPSPhysicalOperator, qgn: QualifiedGraphName)
+  extends UnaryPhysicalOperator
+    with InheritedHeader
+    with PhysicalOperatorDebugging {
+
+  override def executeUnary(prev: CAPSPhysicalResult)(implicit context: CAPSRuntimeContext): CAPSPhysicalResult =
+    CAPSPhysicalResult(prev.records, resolve(qgn), qgn)
+}
+
 final case class Cache(in: CAPSPhysicalOperator) extends UnaryPhysicalOperator with InheritedHeader {
 
   override def executeUnary(prev: CAPSPhysicalResult)(implicit context: CAPSRuntimeContext): CAPSPhysicalResult = {
@@ -62,51 +72,6 @@ final case class Cache(in: CAPSPhysicalOperator) extends UnaryPhysicalOperator w
       context.cache(in) = prev
       prev
     })
-  }
-}
-
-final case class NodeScan(in: CAPSPhysicalOperator, v: Var, header: RecordHeader)
-  extends UnaryPhysicalOperator with PhysicalOperatorDebugging {
-
-  override def executeUnary(prev: CAPSPhysicalResult)(implicit context: CAPSRuntimeContext): CAPSPhysicalResult = {
-    val graph = prev.workingGraph
-    val records = v.cypherType match {
-      case n: CTNode => graph.nodes(v.name, n)
-      case other => throw IllegalArgumentException("Node variable", other)
-    }
-    if (header != records.header) {
-      throw SchemaException(
-        s"""
-           |Graph schema does not match actual records returned for scan $v:
-           |  - Computed record header based on graph schema: ${header.pretty}
-           |  - Actual record header: ${records.header.pretty}
-        """.stripMargin)
-    }
-    CAPSPhysicalResult(records, graph, prev.workingGraphName)
-  }
-}
-
-final case class RelationshipScan(
-  in: CAPSPhysicalOperator,
-  v: Var,
-  header: RecordHeader
-) extends UnaryPhysicalOperator with PhysicalOperatorDebugging {
-
-  override def executeUnary(prev: CAPSPhysicalResult)(implicit context: CAPSRuntimeContext): CAPSPhysicalResult = {
-    val graph = prev.workingGraph
-    val records = v.cypherType match {
-      case r: CTRelationship => graph.relationships(v.name, r)
-      case other => throw IllegalArgumentException("Relationship variable", other)
-    }
-    if (header != records.header) {
-      throw SchemaException(
-        s"""
-           |Graph schema does not match actual records returned for scan $v:
-           |  - Computed record header based on graph schema: ${header.pretty}
-           |  - Actual record header: ${records.header.pretty}
-        """.stripMargin)
-    }
-    CAPSPhysicalResult(records, graph, v.cypherType.graph.get)
   }
 }
 
@@ -377,21 +342,11 @@ final case class InitVarExpand(
   }
 }
 
-final case class EmptyRecords(in: CAPSPhysicalOperator, header: RecordHeader)(implicit caps: CAPSSession)
-  extends UnaryPhysicalOperator with PhysicalOperatorDebugging {
-
-  override def executeUnary(prev: CAPSPhysicalResult)(implicit context: CAPSRuntimeContext): CAPSPhysicalResult =
-    prev.mapRecordsWithDetails(_ => CAPSRecords.empty(header))
-
-}
-
-final case class FromGraph(
-  in: CAPSPhysicalOperator,
-  graph: LogicalCatalogGraph
-) extends UnaryPhysicalOperator with InheritedHeader with PhysicalOperatorDebugging {
+final case class FromGraph(in: CAPSPhysicalOperator, qgn: QualifiedGraphName)
+  extends UnaryPhysicalOperator with InheritedHeader with PhysicalOperatorDebugging {
 
   override def executeUnary(prev: CAPSPhysicalResult)(implicit context: CAPSRuntimeContext): CAPSPhysicalResult = {
-    CAPSPhysicalResult(prev.records, resolve(graph.qualifiedGraphName), graph.qualifiedGraphName)
+    CAPSPhysicalResult(prev.records, resolve(qgn), qgn)
   }
 
 }

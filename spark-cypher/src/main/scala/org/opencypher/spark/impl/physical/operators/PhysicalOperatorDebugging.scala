@@ -75,7 +75,7 @@ trait PhysicalOperatorDebugging extends CAPSPhysicalOperator {
       }
       val outputRecordsDfRowCount = recordsDf.cacheAndForce(Some(operatorName))
 
-      if (getClass == classOf[ConstructGraph]) {
+      if (getClass == classOf[ConstructOnGraph]) {
         output.workingGraph match {
           case unionGraph: CAPSUnionGraph =>
             unionGraph.graphs.collectFirst {

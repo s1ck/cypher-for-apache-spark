@@ -46,11 +46,10 @@ import org.scalatest.matchers._
 import scala.language.implicitConversions
 
 class LogicalPlannerTest extends LogicalTestSuite {
-  val nodeA = IRField("a")(CTNode)
-  val nodeB = IRField("b")(CTNode)
-  val nodeG = IRField("g")(CTNode)
-  val relR = IRField("r")(CTRelationship)
-
+  val nodeA: IRField = IRField("a")(CTNode)
+  val nodeB: IRField = IRField("b")(CTNode)
+  val nodeG: IRField = IRField("g")(CTNode)
+  val relR: IRField = IRField("r")(CTRelationship)
 
   val emptySqm = SolvedQueryModel.empty
 
@@ -84,8 +83,8 @@ class LogicalPlannerTest extends LogicalTestSuite {
 
     val block = matchBlock(pattern)
 
-    val scan1 = NodeScan(nodeA, leafPlan, emptySqm.withField(nodeA))
-    val scan2 = NodeScan(nodeB, leafPlan, emptySqm.withField(nodeB))
+    val scan1 = NodeScan(nodeA, logicalTestGraph, emptySqm.withField(nodeA))
+    val scan2 = NodeScan(nodeB, logicalTestGraph, emptySqm.withField(nodeB))
     val ir = irFor(block)
     val result = plan(ir)
 
@@ -104,7 +103,7 @@ class LogicalPlannerTest extends LogicalTestSuite {
     val block = matchBlock(pattern)
     val ir = irFor(block)
 
-    val scan = NodeScan(nodeA, leafPlan, emptySqm.withField(nodeA))
+    val scan = NodeScan(nodeA, logicalTestGraph, emptySqm.withField(nodeA))
     val expandInto = ExpandInto(nodeA, relR, nodeA, Directed, scan, SolvedQueryModel(Set(nodeA, relR)))
 
     plan(ir) should equalWithoutResult(expandInto)
@@ -146,12 +145,12 @@ class LogicalPlannerTest extends LogicalTestSuite {
                 Directed,
                 NodeScan(
                   Var("a")(CTNode),
-                  Start(LogicalCatalogGraph(testQualifiedGraphName, Schema.empty), emptySqm),
+                  logicalTestGraph,
                   SolvedQueryModel(Set(nodeA), Set())
                 ),
                 NodeScan(
                   Var("g")(CTNode),
-                  Start(LogicalCatalogGraph(testQualifiedGraphName, Schema.empty), emptySqm),
+                  logicalTestGraph,
                   SolvedQueryModel(Set(IRField("g")(CTNode)), Set())),
                 SolvedQueryModel(Set(nodeA, IRField("g")(CTNode), relR))
               ),
@@ -224,24 +223,12 @@ class LogicalPlannerTest extends LogicalTestSuite {
                 Directed,
                 NodeScan(
                   Var("a")(CTNode),
-                  Start(
-                    LogicalCatalogGraph(
-                      testQualifiedGraphName,
-                      schema
-                    ),
-                    emptySqm
-                  ),
+                  LogicalCatalogGraph(testQualifiedGraphName, schema),
                   SolvedQueryModel(Set(nodeA), Set())
                 ),
                 NodeScan(
                   Var("g")(CTNode),
-                  Start(
-                    LogicalCatalogGraph(
-                      testQualifiedGraphName,
-                      schema
-                    ),
-                    emptySqm
-                  ),
+                  LogicalCatalogGraph(testQualifiedGraphName, schema),
                   SolvedQueryModel(Set(IRField("g")(CTNode)), Set())
                 ),
                 SolvedQueryModel(Set(nodeA, IRField("g")(CTNode), relR), Set())
@@ -300,7 +287,7 @@ class LogicalPlannerTest extends LogicalTestSuite {
         Not(Equals(Param("p1")(CTInteger), Param("p2")(CTBoolean))(CTBoolean))(CTBoolean),
         NodeScan(
           Var("a")(CTNode),
-          Start(LogicalCatalogGraph(testQualifiedGraphName, Schema.empty), emptySqm),
+          logicalTestGraph,
           SolvedQueryModel(Set(nodeA), Set())
         ),
         SolvedQueryModel(

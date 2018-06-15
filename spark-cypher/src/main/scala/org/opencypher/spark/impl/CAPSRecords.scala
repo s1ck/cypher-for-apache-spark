@@ -278,13 +278,12 @@ case class CAPSRecords(
   }
 
   override def toString: String = {
-    val numRows = df.size
-    if (header.isEmpty && numRows == 0) {
+    if (header.isEmpty) {
       s"CAPSRecords.empty"
-    } else if (header.isEmpty && numRows == 1) {
+    } else if (header.isEmpty) {
       s"CAPSRecords.unit"
     } else {
-      s"CAPSRecords($header, table with $numRows rows)"
+      s"CAPSRecords(${logicalColumns.getOrElse(physicalColumns).mkString(", ")})"
     }
   }
 }

@@ -29,6 +29,7 @@ package org.opencypher.spark.impl.acceptance
 import org.opencypher.okapi.api.graph.{GraphName, Namespace}
 import org.opencypher.okapi.api.value.CypherValue.CypherMap
 import org.opencypher.okapi.impl.io.SessionGraphDataSource
+import org.opencypher.okapi.relational.api.configuration.CoraConfiguration.{PrintFlatPlan, PrintPhysicalPlan}
 import org.opencypher.okapi.testing.Bag
 import org.opencypher.okapi.testing.Bag._
 import org.opencypher.spark.testing.CAPSTestSuite
@@ -95,6 +96,10 @@ class QualifiedGraphNameAcceptance extends CAPSTestSuite with DefaultGraphInit {
 
   describe("CONSTRUCT ON") {
     def assertConstructOn(namespace: String, graphName: String) = {
+
+      PrintFlatPlan.set
+      PrintPhysicalPlan.set
+
       caps.cypher(
         s"""
            |CONSTRUCT ON $namespace.$graphName

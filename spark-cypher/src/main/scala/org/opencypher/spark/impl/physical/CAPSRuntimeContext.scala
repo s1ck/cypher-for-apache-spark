@@ -29,16 +29,14 @@ package org.opencypher.spark.impl.physical
 import org.opencypher.okapi.api.graph.QualifiedGraphName
 import org.opencypher.okapi.api.value.CypherValue.CypherMap
 import org.opencypher.okapi.relational.api.physical.RuntimeContext
+import org.opencypher.spark.api.CAPSSession
 import org.opencypher.spark.impl.physical.operators.CAPSPhysicalOperator
 import org.opencypher.spark.impl.{CAPSGraph, CAPSRecords}
 
 import scala.collection.mutable
 
-object CAPSRuntimeContext {
-  val empty = CAPSRuntimeContext(CypherMap.empty, _ => None, mutable.Map.empty, mutable.Map.empty)
-}
-
 case class CAPSRuntimeContext(
+  session: CAPSSession,
   parameters: CypherMap,
   resolve: QualifiedGraphName => Option[CAPSGraph],
   cache: mutable.Map[CAPSPhysicalOperator, CAPSPhysicalResult],

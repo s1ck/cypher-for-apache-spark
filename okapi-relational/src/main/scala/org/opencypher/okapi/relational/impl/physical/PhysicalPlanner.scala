@@ -28,7 +28,7 @@ package org.opencypher.okapi.relational.impl.physical
 
 import org.opencypher.okapi.api.graph.{CypherSession, PropertyGraph}
 import org.opencypher.okapi.api.types.{CTBoolean, CTNode}
-import org.opencypher.okapi.impl.exception.NotImplementedException
+import org.opencypher.okapi.impl.exception.{IllegalArgumentException, NotImplementedException}
 import org.opencypher.okapi.ir.api.block.SortItem
 import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.ir.api.util.DirectCompilationStage
@@ -46,9 +46,9 @@ A <: RelationalCypherRecords[O],
 P <: PropertyGraph,
 I <: RuntimeContext[A, P]](producer: PhysicalOperatorProducer[O, K, A, P, I])
 
-  extends DirectCompilationStage[FlatOperator, K, PhysicalPlannerContext[K, A]] {
+  extends DirectCompilationStage[FlatOperator, K, PhysicalPlannerContext[O, K, A]] {
 
-  def process(flatPlan: FlatOperator)(implicit context: PhysicalPlannerContext[K, A]): K = {
+  def process(flatPlan: FlatOperator)(implicit context: PhysicalPlannerContext[O, K, A]): K = {
 
     implicit val caps: CypherSession = context.session
 
@@ -64,34 +64,35 @@ I <: RuntimeContext[A, P]](producer: PhysicalOperatorProducer[O, K, A, P, I])
 
         producer.planSelect(process(in), selectExpressions.map(_ -> None), header)
 
-      case flat.EmptyRecords(in, header) =>
-        producer.planEmptyRecords(process(in), header)
+      case flat.DrivingTable(header) =>
+        producer.planDrivingTable(context.inputRecords, header)
 
-      case flat.Start(graph, header) =>
+      case flat.FromGraph(graph, in) =>
+        val maybeIn = in match {
+          case flat.Empty => None
+          case other => Some(other)
+        }
+
         graph match {
+          case LogicalEmptyGraph => producer.planEmpty
+
           case g: LogicalCatalogGraph =>
-            producer.planStart(Some(g.qualifiedGraphName), Some(context.inputRecords), header)
+            producer.planFromGraph(maybeIn.map(process), g.qualifiedGraphName)
+
           case p: LogicalPatternGraph =>
             context.constructedGraphPlans.get(p.name) match {
               case Some(plan) => plan // the graph was already constructed
-              case None => planConstructGraph(None, p) // plan starts with a construct graph, thus we have to plan it
+              case None => planConstructGraph(maybeIn, p) // plan starts with a construct graph, thus we have to plan it
             }
         }
 
-      case flat.FromGraph(graph, in) =>
-        graph match {
-          case g: LogicalCatalogGraph =>
-            producer.planFromGraph(process(in), g)
+      case flat.Empty => producer.planEmpty
 
-          case construct: LogicalPatternGraph =>
-            planConstructGraph(Some(in), construct)
-        }
+      case flat.NodeScan(n, graph, header) =>
+        producer.planNodeScan(n, header, maybePatternGraph(graph))
 
-      case op
-        @flat.NodeScan(v, in, header) => producer.planNodeScan(process(in), op.sourceGraph, v, header)
-
-      case op
-        @flat.RelationshipScan(e, in, header) => producer.planRelationshipScan(process(in), op.sourceGraph, e, header)
+      case flat.RelationshipScan(r, graph, header) =>
+        producer.planRelationshipScan(r, header, maybePatternGraph(graph))
 
       case flat.Alias(expr, alias, in, header) => producer.planAlias(process(in), expr, alias, header)
 
@@ -122,15 +123,12 @@ I <: RuntimeContext[A, P]](producer: PhysicalOperatorProducer[O, K, A, P, I])
         val first = process(sourceOp)
         val third = process(targetOp)
 
-        val startFrom = sourceOp.sourceGraph match {
-          case e: LogicalCatalogGraph =>
-            producer.planStart(Some(e.qualifiedGraphName))
-
-          case c: LogicalPatternGraph =>
-            context.constructedGraphPlans(c.name)
+        val maybePatternGraph = sourceOp.sourceGraph match {
+          case _: LogicalCatalogGraph | LogicalEmptyGraph => None
+          case c: LogicalPatternGraph => Some(context.constructedGraphPlans(c.name))
         }
 
-        val second = producer.planRelationshipScan(startFrom, op.sourceGraph, rel, relHeader)
+        val second = producer.planRelationshipScan(rel, relHeader, maybePatternGraph)
         val startNode = StartNode(rel)(CTNode)
         val endNode = EndNode(rel)(CTNode)
 
@@ -152,9 +150,9 @@ I <: RuntimeContext[A, P]](producer: PhysicalOperatorProducer[O, K, A, P, I])
             producer.planTabularUnionAll(outgoing, incoming)
         }
 
-      case op@flat.ExpandInto(source, rel, target, direction, sourceOp, header, relHeader) =>
+      case flat.ExpandInto(source, rel, target, direction, sourceOp, header, relHeader) =>
         val in = process(sourceOp)
-        val relationships = producer.planRelationshipScan(in, op.sourceGraph, rel, relHeader)
+        val relationships = producer.planRelationshipScan(rel, relHeader)
 
         val startNode = StartNode(rel)()
         val endNode = EndNode(rel)()
@@ -205,29 +203,48 @@ I <: RuntimeContext[A, P]](producer: PhysicalOperatorProducer[O, K, A, P, I])
 
       case flat.ReturnGraph(in) => producer.planReturnGraph(process(in))
 
+      case flat.EmptyRecords(header) => producer.planEmptyWithHeader(header)
+
       case other => throw NotImplementedException(s"Physical planning of operator $other")
     }
   }
 
-  private def planConstructGraph(in: Option[FlatOperator], construct: LogicalPatternGraph)(implicit context: PhysicalPlannerContext[K, A]) = {
-    val onGraphPlan = {
-      construct.onGraphs match {
-        case Nil => producer.planStart() // Empty start
-        //TODO: Optimize case where no union is necessary
-        //case h :: Nil => producer.planStart(Some(h)) // Just one graph, no union required
-        case several =>
-          val onGraphPlans = several.map(qgn => producer.planStart(Some(qgn)))
-          producer.planGraphUnionAll(onGraphPlans, construct.name)
+  private def maybePatternGraph(logicalGraph: LogicalGraph)
+    (implicit context: PhysicalPlannerContext[O, K, A]): Option[K] = logicalGraph match {
+    case p: LogicalPatternGraph => Some(context.constructedGraphPlans.getOrElse(p.name, planConstructGraph(None, p)))
+    case _ => None
+  }
+
+  private def planConstructGraph(in: Option[FlatOperator], construct: LogicalPatternGraph)
+    (implicit context: PhysicalPlannerContext[O, K, A]): K = {
+
+    val onGraphPlan = construct.onGraphs match {
+      case Nil => None // No graphs to construct on
+
+      case onGraphs =>
+        val onGraphPlans = onGraphs.map(qgn => producer.planFromGraph(None, qgn))
+        Some(producer.planGraphUnionAll(onGraphPlans, construct.name))
+    }
+
+    val constructGraphPlan = in.map(process) match {
+      case Some(inputPlan) => onGraphPlan match {
+        case Some(onGraph) => producer.planConstructOnGraph(inputPlan, onGraph, construct)
+        case None => producer.planConstructGraph(inputPlan, construct)
+      }
+      case None => onGraphPlan match {
+        case Some(onGraph) => producer.planConstructOnGraph(producer.planEmpty, onGraph, construct)
+        case None => producer.planConstructGraph(producer.planEmpty, construct)
       }
     }
-    val inputTablePlan = in.map(process).getOrElse(producer.planStart())
 
-    val constructGraphPlan = producer.planConstructGraph(inputTablePlan, onGraphPlan, construct)
+    // update plan cache
     context.constructedGraphPlans.update(construct.name, constructGraphPlan)
+
     constructGraphPlan
   }
 
-  private def planOptional(lhs: FlatOperator, rhs: FlatOperator, header: RecordHeader)(implicit context: PhysicalPlannerContext[K, A]) = {
+  private def planOptional(lhs: FlatOperator, rhs: FlatOperator, header: RecordHeader)
+    (implicit context: PhysicalPlannerContext[O, K, A]) = {
     val lhsData = process(lhs)
     val rhsData = process(rhs)
     val lhsHeader = lhs.header
@@ -253,7 +270,7 @@ I <: RuntimeContext[A, P]](producer: PhysicalOperatorProducer[O, K, A, P, I])
     val rhsWithRenamed = producer.planRenameColumns(rhsWithDropped, joinFieldRenames, rhsHeaderWithRenames)
 
     // 4. Left outer join the left side and the processed right side
-    val joined = producer.planJoin(lhsData, rhsWithRenamed, joinExprs.map(e => e -> e).toSeq, rhsHeaderWithRenames ++ lhsHeader , LeftOuterJoin)
+    val joined = producer.planJoin(lhsData, rhsWithRenamed, joinExprs.map(e => e -> e).toSeq, rhsHeaderWithRenames ++ lhsHeader, LeftOuterJoin)
 
     // 5. Select the resulting header expressions
     producer.planSelect(joined, header.expressions.map(e => e -> Option.empty[Var]).toList, header)

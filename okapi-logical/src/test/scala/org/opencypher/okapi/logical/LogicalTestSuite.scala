@@ -27,10 +27,11 @@
 package org.opencypher.okapi.logical
 
 import org.opencypher.okapi.ir.impl.IrTestSuite
-import org.opencypher.okapi.logical.impl.{LogicalCatalogGraph, SolvedQueryModel, Start}
+import org.opencypher.okapi.logical.impl.{LogicalCatalogGraph, SolvedQueryModel, DrivingTable}
 
 abstract class LogicalTestSuite extends IrTestSuite {
 
-  def leafPlan: Start = Start(LogicalCatalogGraph(testGraph.qualifiedGraphName, testGraph.schema), SolvedQueryModel.empty)
+  def logicalTestGraph = LogicalCatalogGraph(testGraph.qualifiedGraphName, testGraph.schema)
 
+  def leafPlan: DrivingTable = DrivingTable(SolvedQueryModel.empty)
 }

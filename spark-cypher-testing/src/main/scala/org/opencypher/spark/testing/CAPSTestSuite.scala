@@ -26,10 +26,13 @@
  */
 package org.opencypher.spark.testing
 
+import org.opencypher.okapi.api.value.CypherValue.CypherMap
 import org.opencypher.okapi.testing.BaseTestSuite
 import org.opencypher.spark.impl.physical.CAPSRuntimeContext
 import org.opencypher.spark.testing.fixture.{CAPSSessionFixture, SparkSessionFixture}
 import org.opencypher.spark.testing.support.{GraphMatchingTestSupport, RecordMatchingTestSupport}
+
+import scala.collection.mutable
 
 abstract class CAPSTestSuite
     extends BaseTestSuite
@@ -38,6 +41,7 @@ abstract class CAPSTestSuite
     with GraphMatchingTestSupport
     with RecordMatchingTestSupport {
 
-  implicit val context: CAPSRuntimeContext = CAPSRuntimeContext.empty
+  implicit val context: CAPSRuntimeContext =
+    CAPSRuntimeContext(caps, CypherMap.empty, _ => None, mutable.Map.empty, mutable.Map.empty)
 
 }

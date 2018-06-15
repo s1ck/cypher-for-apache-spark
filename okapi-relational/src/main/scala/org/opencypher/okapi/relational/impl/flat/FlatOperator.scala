@@ -28,7 +28,7 @@ package org.opencypher.okapi.relational.impl.flat
 
 import org.opencypher.okapi.ir.api.block.SortItem
 import org.opencypher.okapi.ir.api.expr.{Aggregator, Explode, Expr, Var}
-import org.opencypher.okapi.logical.impl.{Direction, LogicalGraph}
+import org.opencypher.okapi.logical.impl._
 import org.opencypher.okapi.relational.impl.table._
 import org.opencypher.okapi.trees.AbstractTreeNode
 
@@ -59,11 +59,20 @@ sealed abstract class StackingFlatOperator extends FlatOperator {
   override def sourceGraph: LogicalGraph = in.sourceGraph
 }
 
-sealed abstract class FlatLeafOperator extends FlatOperator
+sealed abstract class FlatLeafOperator extends FlatOperator {
+  override def header: RecordHeader = RecordHeader.empty
+  override def sourceGraph: LogicalGraph = LogicalEmptyGraph
+}
 
-final case class NodeScan(node: Var, in: FlatOperator, header: RecordHeader) extends StackingFlatOperator
+case object Empty extends FlatLeafOperator
 
-final case class RelationshipScan(rel: Var, in: FlatOperator, header: RecordHeader) extends StackingFlatOperator
+case object Unit extends FlatLeafOperator
+
+case class DrivingTable(override val header: RecordHeader) extends FlatLeafOperator
+
+case class NodeScan(node: Var, override val sourceGraph: LogicalGraph, override val header: RecordHeader) extends FlatLeafOperator
+
+case class RelationshipScan(rel: Var, override val sourceGraph: LogicalGraph, override val header: RecordHeader) extends FlatLeafOperator
 
 final case class Filter(expr: Expr, in: FlatOperator, header: RecordHeader) extends StackingFlatOperator
 
@@ -159,11 +168,8 @@ final case class Skip(expr: Expr, in: FlatOperator, header: RecordHeader) extend
 
 final case class Limit(expr: Expr, in: FlatOperator, header: RecordHeader) extends StackingFlatOperator
 
-final case class EmptyRecords(in: FlatOperator, header: RecordHeader) extends StackingFlatOperator
+final case class EmptyRecords(override val header: RecordHeader) extends FlatLeafOperator
 
-final case class Start(sourceGraph: LogicalGraph, header: RecordHeader) extends FlatLeafOperator
-
-final case class FromGraph(override val sourceGraph: LogicalGraph, in: FlatOperator)
-    extends StackingFlatOperator {
+final case class FromGraph(override val sourceGraph: LogicalGraph, in: FlatOperator) extends StackingFlatOperator {
   override def header: RecordHeader = in.header
 }

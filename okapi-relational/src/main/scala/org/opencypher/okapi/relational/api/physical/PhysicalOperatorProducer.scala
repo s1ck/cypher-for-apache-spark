@@ -51,48 +51,57 @@ A <: RelationalCypherRecords[O],
 P <: PropertyGraph,
 I <: RuntimeContext[A, P]] {
 
-  // Unary operators
+  // Leaf operators
+
+  /**
+    * Leaf operator that starts from empty records.
+    *
+    * @return empty graph
+    */
+  def planEmpty: K
+
+  /**
+    * Leaf operator that starts from empty records with predefined header.
+    *
+    * @return empty graph
+    */
+  def planEmptyWithHeader(header: RecordHeader): K
+
+  /**
+    * Leaf operator that starts from unit records.
+    *
+    * @return empty graph
+    */
+  def planUnit: K
 
   /**
     * Starts the query execution based on optional given records and an optional graph.
     *
-    * @param qgnOpt qualified graph name of the input graph
-    * @param in     backend-specific records
-    * @return start operator
+    * @param drivingRecords     backend-specific records
+    * @return driving table operator
     */
-  def planStart(qgnOpt: Option[QualifiedGraphName] = None, in: Option[A] = None, header: RecordHeader = RecordHeader.empty): K
+  def planDrivingTable(drivingRecords: A, header: RecordHeader = RecordHeader.empty): K
 
   /**
     * Scans the node set of the input graph and returns all nodes that match the given CTNode type.
     *
-    * @param in      previous operator
-    * @param inGraph graph to scan nodes from
     * @param v       node variable carrying the node type to scan for
     * @param header  resulting record header
     * @return node scan operator
     */
-  def planNodeScan(in: K, inGraph: LogicalGraph, v: Var, header: RecordHeader): K
+  def planNodeScan(v: Var, header: RecordHeader, maybePatternGraph: Option[K] = None): K
 
   /**
     * Scans the relationship set of the input graph and returns all relationships that match the given CTRelationship
     * type.
     *
-    * @param in      previous operator
-    * @param inGraph graph to scan relationships from
     * @param v       node variable carrying the relationship type to scan for
     * @param header  resulting record header
     * @return relationship scan operator
     */
-  def planRelationshipScan(in: K, inGraph: LogicalGraph, v: Var, header: RecordHeader): K
+  def planRelationshipScan(v: Var, header: RecordHeader, maybePatternGraph: Option[K] = None): K
 
-  /**
-    * Creates an empty record set thereby disregarding the input. The records are described by the given record header.
-    *
-    * @param in     previous operator
-    * @param header record header describing the created records
-    * @return empty records operator
-    */
-  def planEmptyRecords(in: K, header: RecordHeader): K
+  // Unary operators
 
   /**
     * Renames the columns identified by the given expressions to the specified aliases.
@@ -166,11 +175,11 @@ I <: RuntimeContext[A, P]] {
   /**
     * Use the specified graph.
     *
-    * @param in    previous operator
-    * @param graph graph to select from the catalog
+    * @param maybeIn previous operator
+    * @param qgn graph to select from the catalog
     * @return select graph operator
     */
-  def planFromGraph(in: K, graph: LogicalCatalogGraph): K
+  def planFromGraph(maybeIn: Option[K], qgn: QualifiedGraphName): K
 
   /**
     * Evaluates the given expression and projects it to a new column in the input records.
@@ -187,11 +196,20 @@ I <: RuntimeContext[A, P]] {
     * Creates a new record containing the specified entities (i.e. as defined in a construction pattern).
     *
     * @param table     table that contains cloned aliases and data for constructing new entities
+    * @param construct graph to construct
+    * @return project pattern graph operator
+    */
+  def planConstructGraph(table: K, construct: LogicalPatternGraph): K
+
+  /**
+    * Creates a new record containing the specified entities (i.e. as defined in a construction pattern).
+    *
+    * @param table     table that contains cloned aliases and data for constructing new entities
     * @param onGraph   graph that we construct on
     * @param construct graph to construct
     * @return project pattern graph operator
     */
-  def planConstructGraph(table: K, onGraph: K, construct: LogicalPatternGraph): K
+  def planConstructOnGraph(table: K, onGraph: K, construct: LogicalPatternGraph): K
 
   /**
     * Groups the underlying records by the specified expressions and evaluates the given aggregate functions.

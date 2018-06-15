@@ -197,99 +197,21 @@ final case class CartesianProduct(lhs: CAPSPhysicalOperator, rhs: CAPSPhysicalOp
   }
 }
 
-/**
-  * @param lhs table with aliases and data for new entities
-  * @param rhs graph on which we construct the new graph
-  * @param construct
-  */
-final case class ConstructGraph(
-  lhs: CAPSPhysicalOperator,
-  rhs: CAPSPhysicalOperator,
-  construct: LogicalPatternGraph
-) extends BinaryPhysicalOperator with PhysicalOperatorDebugging {
+trait AbstractConstructGraph extends CAPSPhysicalOperator {
+  def header: RecordHeader = RecordHeader.empty
 
-  override def toString: String = {
-    val entities = construct.clones.keySet ++ construct.newEntities.map(_.v)
-    s"ConstructGraph(on=[${construct.onGraphs.mkString(", ")}], entities=[${entities.mkString(", ")}])"
-  }
+  def construct: LogicalPatternGraph
 
-  override def header: RecordHeader = RecordHeader.empty
-
-  private def pickFreeTag(tagStrategy: Map[QualifiedGraphName, Map[Int, Int]]): Int = {
+  protected def pickFreeTag(tagStrategy: Map[QualifiedGraphName, Map[Int, Int]]): Int = {
     val usedTags = tagStrategy.values.flatMap(_.values).toSet
     Tags.pickFreeTag(usedTags)
   }
 
-  private def identityRetaggings(g: CAPSGraph): (CAPSGraph, Map[Int, Int]) = {
+  protected def identityRetaggings(g: CAPSGraph): (CAPSGraph, Map[Int, Int]) = {
     g -> g.tags.zip(g.tags).toMap
   }
 
-  override def executeBinary(left: CAPSPhysicalResult, right: CAPSPhysicalResult)
-    (implicit context: CAPSRuntimeContext): CAPSPhysicalResult = {
-    implicit val session: CAPSSession = left.records.caps
-
-    val onGraph = right.workingGraph
-    val unionTagStrategy: Map[QualifiedGraphName, Map[Int, Int]] = right.tagStrategy
-
-    val LogicalPatternGraph(schema, clonedVarsToInputVars, newEntities, sets, _, name) = construct
-
-    val matchGraphs: Set[QualifiedGraphName] = clonedVarsToInputVars.values.map(_.cypherType.graph.get).toSet
-    val allGraphs = unionTagStrategy.keySet ++ matchGraphs
-    val tagsForGraph: Map[QualifiedGraphName, Set[Int]] = allGraphs.map(qgn => qgn -> resolveTags(qgn)).toMap
-
-    val constructTagStrategy = computeRetaggings(tagsForGraph, unionTagStrategy)
-
-    // Apply aliases in CLONE to input table in order to create the base table, on which CONSTRUCT happens
-    val aliasClones = clonedVarsToInputVars
-      .filter { case (alias, original) => alias != original }
-      .map(_.swap)
-    val baseTable = left.records.withAliases(aliasClones.toSeq: _*)
-
-    val retaggedBaseTable = clonedVarsToInputVars.foldLeft(baseTable) { case (df, clone) =>
-      df.retagVariable(clone._1, constructTagStrategy(clone._2.cypherType.graph.get))
-    }
-
-    // Construct NEW entities
-    val (newEntityTags, tableWithConstructedEntities) = {
-      if (newEntities.isEmpty) {
-        Set.empty[Int] -> retaggedBaseTable
-      } else {
-        val newEntityTag = pickFreeTag(constructTagStrategy)
-        val entityTable = createEntities(newEntities, retaggedBaseTable, newEntityTag)
-        val entityTableWithProperties = sets.foldLeft(entityTable) {
-          case (df, SetPropertyItem(key, v, expr)) =>
-            constructProperty(v, key, expr, df)
-        }
-        Set(newEntityTag) -> entityTableWithProperties
-      }
-    }
-
-    // Remove all vars that were part the original pattern graph DF, except variables that were CLONEd without an alias
-    val allInputVars = baseTable.header.vars
-    val originalVarsToKeep = clonedVarsToInputVars.keySet -- aliasClones.keySet
-    val varsToRemoveFromTable = allInputVars -- originalVarsToKeep
-    val patternGraphTable = tableWithConstructedEntities.removeVars(varsToRemoveFromTable)
-
-    val tagsUsed = constructTagStrategy.foldLeft(newEntityTags) {
-      case (tags, (qgn, remapping)) =>
-        val remappedTags = tagsForGraph(qgn).map(remapping)
-        tags ++ remappedTags
-    }
-
-    val patternGraph = CAPSGraph.create(patternGraphTable, schema.asCaps, tagsUsed)
-
-    val constructedCombinedWithOn = onGraph match {
-      case _: EmptyGraph => CAPSUnionGraph(Map(identityRetaggings(patternGraph)))
-      case _ => CAPSUnionGraph(Map(identityRetaggings(onGraph), identityRetaggings(patternGraph)))
-    }
-
-    context.patternGraphTags.update(construct.name, constructedCombinedWithOn.tags)
-
-    CAPSPhysicalResult(CAPSRecords.unit(), constructedCombinedWithOn, name, constructTagStrategy)
-  }
-
-
-  def constructProperty(variable: Var, propertyKey: String, propertyValue: Expr, constructedTable: CAPSRecords)
+  protected def constructProperty(variable: Var, propertyKey: String, propertyValue: Expr, constructedTable: CAPSRecords)
     (implicit context: CAPSRuntimeContext): CAPSRecords = {
     val propertyValueColumn: Column = propertyValue.asSparkSQLExpr(constructedTable.header, constructedTable.df, context)
 
@@ -309,7 +231,7 @@ final case class ConstructGraph(
     CAPSRecords(newHeader, newData)(constructedTable.caps)
   }
 
-  private def createEntities(
+  protected def createEntities(
     toCreate: Set[ConstructedEntity],
     constructedTable: CAPSRecords,
     newEntityTag: Int): CAPSRecords = {
@@ -336,7 +258,7 @@ final case class ConstructGraph(
     addEntitiesToRecords(createdRels, recordsWithNodes)
   }
 
-  private def addEntitiesToRecords(
+  protected def addEntitiesToRecords(
     columnsToAdd: Map[Expr, Column],
     constructedTable: CAPSRecords
   ): CAPSRecords = {
@@ -351,7 +273,7 @@ final case class ConstructGraph(
     CAPSRecords(newHeader, newData)(constructedTable.caps)
   }
 
-  private def constructNode(
+  protected def constructNode(
     newEntityTag: Int,
     columnIdPartition: Int,
     numberOfColumnPartitions: Int,
@@ -387,7 +309,7 @@ final case class ConstructGraph(
     * @param columnIdPartition column partition within DF partition
     */
   // TODO: improve documentation and add specific tests
-  private def generateId(columnIdPartition: Int, numberOfColumnPartitions: Int): Column = {
+  protected def generateId(columnIdPartition: Int, numberOfColumnPartitions: Int): Column = {
     val columnPartitionBits = math.log(numberOfColumnPartitions).floor.toInt + 1
     val totalIdSpaceBits = 33
     val columnIdShift = totalIdSpaceBits - columnPartitionBits
@@ -399,13 +321,12 @@ final case class ConstructGraph(
     monotonically_increasing_id() + functions.lit(columnPartitionOffset)
   }
 
-  private def constructRel(
+  protected def constructRel(
     newEntityTag: Int,
     columnIdPartition: Int,
     numberOfColumnPartitions: Int,
     toConstruct: ConstructedRelationship,
-    constructedTable: CAPSRecords
-  ): Map[Expr, Column] = {
+    constructedTable: CAPSRecords): Map[Expr, Column] = {
     val ConstructedRelationship(rel, source, target, typOpt, baseRelOpt) = toConstruct
     val header = constructedTable.header
     val inData = constructedTable.df
@@ -443,7 +364,7 @@ final case class ConstructGraph(
     propertyTuples ++ typeTuple + idTuple + sourceTuple + targetTuple
   }
 
-  private def copyExpressions[T <: Expr](targetVar: Var, records: CAPSRecords)
+  protected def copyExpressions[T <: Expr](targetVar: Var, records: CAPSRecords)
     (extractor: RecordHeader => Set[T]): Map[Expr, Column] = {
     val header = records.header
     val origExprs = extractor(header)
@@ -451,4 +372,102 @@ final case class ConstructGraph(
     val dfColumns = origExprs.map(header.column).map(records.df.col)
     copyExprs.zip(dfColumns).toMap
   }
+
+  protected def constructInternal(constructGraph: CAPSPhysicalResult, maybeOnPhysicalResult: Option[CAPSPhysicalResult])
+    (implicit context: CAPSRuntimeContext): CAPSPhysicalResult = {
+    implicit val session: CAPSSession = constructGraph.records.caps
+
+    val maybeOnGraph = maybeOnPhysicalResult.map(_.workingGraph)
+    val tagStrategy = maybeOnPhysicalResult.map(_.tagStrategy).getOrElse(Map.empty)
+
+    val LogicalPatternGraph(schema, clonedVarsToInputVars, newEntities, sets, _, name) = construct
+
+    val matchGraphs: Set[QualifiedGraphName] = clonedVarsToInputVars.values.map(_.cypherType.graph.get).toSet
+    val allGraphs = tagStrategy.keySet ++ matchGraphs
+    val tagsForGraph: Map[QualifiedGraphName, Set[Int]] = allGraphs.map(qgn => qgn -> resolveTags(qgn)).toMap
+
+    val constructTagStrategy = computeRetaggings(tagsForGraph, tagStrategy)
+
+    // Apply aliases in CLONE to input table in order to create the base table, on which CONSTRUCT happens
+    val aliasClones = clonedVarsToInputVars
+      .filter { case (alias, original) => alias != original }
+      .map(_.swap)
+    val baseTable = constructGraph.records.withAliases(aliasClones.toSeq: _*)
+
+    val retaggedBaseTable = clonedVarsToInputVars.foldLeft(baseTable) { case (df, clone) =>
+      df.retagVariable(clone._1, constructTagStrategy(clone._2.cypherType.graph.get))
+    }
+
+    // Construct NEW entities
+    val (newEntityTags, tableWithConstructedEntities) = {
+      if (newEntities.isEmpty) {
+        Set.empty[Int] -> retaggedBaseTable
+      } else {
+        val newEntityTag = pickFreeTag(constructTagStrategy)
+        val entityTable = createEntities(newEntities, retaggedBaseTable, newEntityTag)
+        val entityTableWithProperties = sets.foldLeft(entityTable) {
+          case (df, SetPropertyItem(key, v, expr)) =>
+            constructProperty(v, key, expr, df)
+        }
+        Set(newEntityTag) -> entityTableWithProperties
+      }
+    }
+
+    // Remove all vars that were part the original pattern graph DF, except variables that were CLONEd without an alias
+    val allInputVars = baseTable.header.vars
+    val originalVarsToKeep = clonedVarsToInputVars.keySet -- aliasClones.keySet
+    val varsToRemoveFromTable = allInputVars -- originalVarsToKeep
+    val patternGraphTable = tableWithConstructedEntities.removeVars(varsToRemoveFromTable)
+
+    val tagsUsed = constructTagStrategy.foldLeft(newEntityTags) {
+      case (tags, (qgn, remapping)) =>
+        val remappedTags = tagsForGraph(qgn).map(remapping)
+        tags ++ remappedTags
+    }
+
+    val patternGraph = CAPSGraph.create(patternGraphTable, schema.asCaps, tagsUsed)
+
+    val constructedCombinedWithOn = maybeOnGraph match {
+      case Some(onGraph) => CAPSUnionGraph(Map(identityRetaggings(onGraph), identityRetaggings(patternGraph)))
+      case None => patternGraph // CAPSUnionGraph(Map(identityRetaggings(patternGraph)))
+    }
+
+    context.patternGraphTags.update(construct.name, constructedCombinedWithOn.tags)
+
+    CAPSPhysicalResult(CAPSRecords.unit(), constructedCombinedWithOn, name, constructTagStrategy)
+  }
+}
+
+/**
+  * @param in table with aliases and data for new entities
+  * @param construct
+  */
+final case class ConstructGraph(
+  in: CAPSPhysicalOperator,
+  construct: LogicalPatternGraph
+) extends UnaryPhysicalOperator with PhysicalOperatorDebugging with AbstractConstructGraph {
+
+  override def executeUnary(prev: CAPSPhysicalResult)
+    (implicit context: CAPSRuntimeContext): CAPSPhysicalResult =
+    constructInternal(prev, None)
+}
+
+/**
+  * @param lhs table with aliases and data for new entities
+  * @param rhs graph on which we construct the new graph
+  * @param construct
+  */
+final case class ConstructOnGraph(
+  lhs: CAPSPhysicalOperator,
+  rhs: CAPSPhysicalOperator,
+  construct: LogicalPatternGraph
+) extends BinaryPhysicalOperator with PhysicalOperatorDebugging with AbstractConstructGraph {
+
+  override def toString: String = {
+    val entities = construct.clones.keySet ++ construct.newEntities.map(_.v)
+    s"ConstructGraph(on=[${construct.onGraphs.mkString(", ")}], entities=[${entities.mkString(", ")}])"
+  }
+  override def executeBinary(left: CAPSPhysicalResult, right: CAPSPhysicalResult)
+    (implicit context: CAPSRuntimeContext): CAPSPhysicalResult =
+    constructInternal(left, Some(right))
 }

@@ -50,14 +50,11 @@ import org.opencypher.spark.api.CAPSSession
 import org.opencypher.spark.impl.CAPSConverters._
 import org.opencypher.spark.impl.physical._
 
-sealed class CAPSSessionImpl(val sparkSession: SparkSession)
-  extends CAPSSession
-    with Serializable
-    with CAPSSessionOps {
+sealed class CAPSSessionImpl(val sparkSession: SparkSession) extends CAPSSession with Serializable {
 
   self =>
 
-  private implicit def capsSession = this
+  private implicit def capsSession: CAPSSessionImpl = this
 
   private val producer = new LogicalOperatorProducer
   private val logicalPlanner = new LogicalPlanner(producer)
@@ -129,47 +126,6 @@ sealed class CAPSSessionImpl(val sparkSession: SparkSession)
     }
   }
 
-  override def filter(
-    graph: PropertyGraph,
-    in: CypherRecords,
-    expr: Expr,
-    queryParameters: CypherMap): CAPSRecords = {
-    val scan = planStart(graph, in.asCaps.header.vars)
-    val filter = producer.planFilter(expr, scan)
-    planPhysical(in, queryParameters, filter).getRecords
-  }
-
-  override def select(
-    graph: PropertyGraph,
-    in: CypherRecords,
-    fields: List[Var],
-    queryParameters: CypherMap): CAPSRecords = {
-    val scan = planStart(graph, in.asCaps.header.vars)
-    val select = producer.planSelect(fields, scan)
-    planPhysical(in, queryParameters, select).getRecords
-  }
-
-  override def project(
-    graph: PropertyGraph,
-    in: CypherRecords,
-    expr: Expr,
-    queryParameters: CypherMap): CAPSRecords = {
-    val scan = planStart(graph, in.asCaps.header.vars)
-    val project = producer.projectExpr(expr, scan)
-    planPhysical(in, queryParameters, project).getRecords
-  }
-
-  override def alias(
-    graph: PropertyGraph,
-    in: CypherRecords,
-    alias: (Expr, Var),
-    queryParameters: CypherMap): CAPSRecords = {
-    val (expr, v) = alias
-    val scan = planStart(graph, in.asCaps.header.vars)
-    val select = producer.projectField(expr, IRField(v.name)(v.cypherType), scan)
-    planPhysical(in, queryParameters, select).getRecords
-  }
-
   private def planCypherQuery(graph: PropertyGraph, cypherQuery: CypherQuery[Expr], allParameters: CypherMap, inputFields: Set[Var], drivingTable: CypherRecords) = {
     val LogicalPlan = planLogical(cypherQuery, graph, inputFields)
     planPhysical(drivingTable, allParameters, LogicalPlan)
@@ -219,7 +175,6 @@ sealed class CAPSSessionImpl(val sparkSession: SparkSession)
       physicalPlan.show()
     }
 
-
     logStageProgress("Physical optimization ... ", newLine = false)
     val optimizedPhysicalPlan = time("Physical optimization")(physicalOptimizer(physicalPlan)(PhysicalOptimizerContext()))
     logStageProgress("Done!")
@@ -231,7 +186,7 @@ sealed class CAPSSessionImpl(val sparkSession: SparkSession)
     val graphAt = (qgn: QualifiedGraphName) => Some(catalog.graph(qgn).asCaps)
 
     CAPSResultBuilder.from(logicalPlan, flatPlan, optimizedPhysicalPlan)(
-      CAPSRuntimeContext(physicalPlannerContext.parameters, graphAt, collection.mutable.Map.empty, collection.mutable.Map.empty))
+      CAPSRuntimeContext(this, physicalPlannerContext.parameters, graphAt, collection.mutable.Map.empty, collection.mutable.Map.empty))
   }
 
   private[opencypher] def time[T](description: String)(code: => T): T = {
@@ -248,12 +203,6 @@ sealed class CAPSSessionImpl(val sparkSession: SparkSession)
     val qgn = qgnGenerator.generate
     catalog.store(qgn, ambient)
     IRCatalogGraph(qgn, ambient.schema)
-  }
-
-  private def planStart(graph: PropertyGraph, fields: Set[Var]): LogicalOperator = {
-    val ambientGraph = mountAmbientGraph(graph)
-
-    producer.planStart(LogicalCatalogGraph(ambientGraph.qualifiedGraphName, graph.schema), fields)
   }
 
   override def toString: String = s"${this.getClass.getSimpleName}"

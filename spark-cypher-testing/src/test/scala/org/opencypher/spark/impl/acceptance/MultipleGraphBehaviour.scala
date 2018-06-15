@@ -27,8 +27,9 @@
 package org.opencypher.spark.impl.acceptance
 
 import org.opencypher.okapi.api.schema.{PropertyKeys, Schema}
-import org.opencypher.okapi.api.types.{CTInteger, CTString}
+import org.opencypher.okapi.api.types.{CTInteger, CTNode, CTString}
 import org.opencypher.okapi.api.value.CypherValue.CypherMap
+import org.opencypher.okapi.relational.api.configuration.CoraConfiguration.{PrintFlatPlan, PrintPhysicalPlan}
 import org.opencypher.okapi.testing.Bag
 import org.opencypher.okapi.testing.Bag._
 import org.opencypher.spark.api.value.{CAPSNode, CAPSRelationship}
@@ -55,12 +56,15 @@ class MultipleGraphBehaviour extends CAPSTestSuite with ScanGraphInit {
 
   // TODO: MATCH after RETURN is not allowed -> fix in Front-End
   it("creates multiple copies of the same node") {
+    PrintFlatPlan.set
+    PrintPhysicalPlan.set
     val g = caps.cypher(
       """
         |CONSTRUCT
         |  NEW ()
         |RETURN GRAPH
       """.stripMargin).getGraph
+
     val results = g.cypher(
       """
         |MATCH (a)
