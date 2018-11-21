@@ -54,6 +54,7 @@ case class CAPSEntityTable private[spark](
 
   override type Records = CAPSEntityTable
 
+  // TODO: only used in testing .. remove
   private[spark] def records(implicit caps: CAPSSession): CAPSRecords = caps.records.fromEntityTable(entityTable = this)
 
   override def cache(): CAPSEntityTable = {
