@@ -36,6 +36,7 @@ import org.opencypher.okapi.relational.api.table.{RelationalCypherRecords, Table
 import org.opencypher.okapi.relational.api.tagging.TagSupport._
 import org.opencypher.okapi.relational.impl.graph.{EmptyGraph, ScanGraph, UnionGraph}
 import org.opencypher.okapi.relational.impl.operators.RelationalOperator
+import org.opencypher.okapi.relational.impl.planning.PropertyGraphStatistics
 import org.opencypher.okapi.relational.impl.planning.RelationalPlanner._
 
 import scala.reflect.runtime.universe.TypeTag
@@ -88,6 +89,8 @@ trait RelationalCypherGraph[T <: Table[T]] extends PropertyGraph {
   private[opencypher] implicit def tableTypeTag: TypeTag[T] = session.tableTypeTag
 
   def tags: Set[Int]
+
+  def maybeStatistics: Option[PropertyGraphStatistics] = None
 
   def cache(): RelationalCypherGraph[T] = {
     tables.foreach(_.cache())

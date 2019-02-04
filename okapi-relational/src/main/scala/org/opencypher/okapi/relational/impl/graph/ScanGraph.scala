@@ -36,11 +36,16 @@ import org.opencypher.okapi.relational.api.planning.RelationalRuntimeContext
 import org.opencypher.okapi.relational.api.schema.RelationalSchema._
 import org.opencypher.okapi.relational.api.table.{RelationalCypherRecords, Table}
 import org.opencypher.okapi.relational.impl.operators._
+import org.opencypher.okapi.relational.impl.planning.PropertyGraphStatistics
 import org.opencypher.okapi.relational.impl.planning.RelationalPlanner._
 
 import scala.reflect.runtime.universe.TypeTag
 
-class ScanGraph[T <: Table[T] : TypeTag](val scans: Seq[EntityTable[T]], val schema: Schema, val tags: Set[Int])
+class ScanGraph[T <: Table[T] : TypeTag](
+  val scans: Seq[EntityTable[T]],
+  val schema: Schema,
+  val tags: Set[Int],
+  override val maybeStatistics: Option[PropertyGraphStatistics] = None)
   (implicit val session: RelationalCypherSession[T])
   extends RelationalCypherGraph[T] {
 

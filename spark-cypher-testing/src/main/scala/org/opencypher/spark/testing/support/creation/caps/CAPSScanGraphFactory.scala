@@ -31,6 +31,7 @@ import org.apache.spark.sql.types.{LongType, StructField, StructType}
 import org.opencypher.okapi.api.io.conversion.{NodeMapping, RelationshipMapping}
 import org.opencypher.okapi.api.schema.PropertyKeys.PropertyKeys
 import org.opencypher.okapi.relational.impl.graph.ScanGraph
+import org.opencypher.okapi.relational.impl.planning.PropertyGraphStatistics
 import org.opencypher.okapi.testing.propertygraph.InMemoryTestGraph
 import org.opencypher.spark.api.CAPSSession
 import org.opencypher.spark.api.io.GraphEntity.sourceIdKey
@@ -100,7 +101,12 @@ object CAPSScanGraphFactory extends CAPSTestGraphFactory {
         .withPropertyKeys(propKeys.keys.toSeq: _*), records)
     }
 
-    new ScanGraph(nodeScans.toSeq ++ relScans, schema, Set(0))
+    val nodeCounts = propertyGraph.nodes.groupBy(_.labels).mapValues(_.size.toLong)
+    val relCounts = propertyGraph.relationships.groupBy(_.relType).mapValues(_.size.toLong)
+
+    val statistics = PropertyGraphStatistics(nodeCounts, relCounts)
+
+    new ScanGraph(nodeScans.toSeq ++ relScans, schema, Set(0), Some(statistics))
   }
 
   override def name: String = "CAPSScanGraphFactory"
