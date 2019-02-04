@@ -26,10 +26,11 @@
  */
 package org.opencypher.spark.impl.physical
 
-import org.opencypher.okapi.api.graph.QualifiedGraphName
+import org.opencypher.okapi.api.graph.{CypherResult, QualifiedGraphName}
 import org.opencypher.okapi.api.types.CTNode
 import org.opencypher.okapi.ir.api.expr.Var
 import org.opencypher.okapi.logical.impl.LogicalCatalogGraph
+import org.opencypher.okapi.relational.api.configuration.CoraConfiguration.{PrintOptimizedRelationalPlan, PrintRelationalPlan}
 import org.opencypher.okapi.relational.api.planning.RelationalRuntimeContext
 import org.opencypher.okapi.relational.api.table.Table
 import org.opencypher.okapi.relational.impl.operators.{Cache, Join, RelationalOperator, SwitchContext}
@@ -47,6 +48,33 @@ class RelationalOptimizerTest extends CAPSTestSuite with GraphConstructionFixtur
       case _: Cache[T] => true
       case _ => false
     }
+  }
+
+  it("join reordering") {
+    PrintRelationalPlan.set()
+    PrintOptimizedRelationalPlan.set()
+
+    val g = initGraph(
+      """
+        |CREATE (alice:Person {firstName: "Alice"})
+        |CREATE (bob:Person   {firstName: "Bob"  })
+        |CREATE (carol:Person {firstName: "Carol"})
+        |CREATE (eve:Person   {firstName: "Eve"  })
+        |CREATE (neo:Company    {name: "Neo4j" })
+        |CREATE (oracle:Company {name: "Oracle"})
+        |CREATE (alice)-[:WORKS_AT]->(neo)
+        |CREATE (bob)-[:WORKS_AT]->(neo)
+        |CREATE (carol)-[:WORKS_AT]->(neo)
+        |CREATE (eve)-[:WORKS_AT]->(oracle)
+      """.stripMargin)
+
+    val result: CypherResult = g.cypher(
+      """
+        |MATCH (n: Person)-[:WORKS_AT]->(c:Company)
+        |RETURN n.firstName, c.name
+      """.stripMargin)
+
+    result.show
   }
 
   test("Test insert Cache operators") {

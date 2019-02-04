@@ -27,15 +27,59 @@
 package org.opencypher.okapi.relational.impl.planning
 
 import org.opencypher.okapi.relational.api.table.Table
-import org.opencypher.okapi.relational.impl.operators.{Cache, RelationalOperator, Start}
-import org.opencypher.okapi.trees.TopDown
+import org.opencypher.okapi.relational.impl.operators._
+import org.opencypher.okapi.trees.{BottomUpWithContext, TopDown}
+import RelationalPlanner._
+import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
 
 import scala.reflect.runtime.universe.TypeTag
 
 object RelationalOptimizer {
 
   def process[T <: Table[T] : TypeTag](input: RelationalOperator[T]): RelationalOperator[T] = {
-    InsertCachingOperators(input)
+    InsertCachingOperators(JoinReordering(input))
+  }
+
+  object JoinReordering {
+
+    private val defaultCardinality = 1
+
+    def apply[T <: Table[T] : TypeTag](input: RelationalOperator[T]): RelationalOperator[T] = {
+
+      val (output, context) = BottomUpWithContext[RelationalOperator[T], Map[RelationalOperator[T], Long]] {
+        case (join @ Join(lhs, rhs, joinExprs, InnerJoin), context) => {
+          join -> context.updated(join, context(lhs) * context(rhs))
+        }
+        case (union : TabularUnionAll[T], context) =>
+          union -> context.updated(union, context(union.lhs) + context(union.rhs))
+
+        case (start @ Start(gqn, Some(_), _), context) =>
+          start.graph.maybeStatistics match {
+            case Some(statistics) =>
+              val entity = start.singleEntity
+              val cardinality: Long = entity.cypherType match {
+
+                case CTNode(labels, _) =>
+                  statistics.nodeCounts.getOrElse(labels, defaultCardinality)
+
+                case CTRelationship(relTypes, _) if relTypes.size == defaultCardinality =>
+                  statistics.relCounts.getOrElse(relTypes.head, defaultCardinality)
+              }
+              start -> context.updated(start, cardinality)
+
+            case None =>
+              start -> context.updated(start, defaultCardinality)
+          }
+
+        case (other, context) =>
+          other -> context.updated(other, context(other.children.head))
+
+      }.transform(input, Map.empty)
+
+      context.foreach { case (op, cardinality) => println(s"[$cardinality] $op") }
+
+      output
+    }
   }
 
   object InsertCachingOperators {
