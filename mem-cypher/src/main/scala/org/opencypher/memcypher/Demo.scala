@@ -1,9 +1,7 @@
 package org.opencypher.memcypher
 
-import org.opencypher.memcypher.api.MemCypherSession
-import org.opencypher.memcypher.impl.table.{Row, Schema, Table}
-import org.opencypher.memcypher.impl.cyphertable.{MemNodeTable, MemRelationshipTable}
-import org.opencypher.okapi.api.io.conversion.{NodeMapping, RelationshipMapping}
+import org.opencypher.memcypher.table.{Row, Schema}
+import org.opencypher.okapi.api.io.conversion.{NodeMappingBuilder, RelationshipMappingBuilder}
 import org.opencypher.okapi.api.types.{CTInteger, CTString}
 import org.opencypher.okapi.api.value.CypherValue.CypherMap
 import org.opencypher.okapi.relational.api.configuration.CoraConfiguration.PrintRelationalPlan
@@ -30,7 +28,7 @@ object Demo extends App {
 
 object DemoData {
 
-  def nodes: MemNodeTable = {
+  def nodes: MemEntityTable = {
     val schema = Schema.empty
       .withColumn("id", CTInteger)
       .withColumn("age", CTInteger)
@@ -44,17 +42,18 @@ object DemoData {
       Row(3L, 84L, "Frank", "m")
     )
 
-    val nodeMapping = NodeMapping.on("id")
+    val nodeMapping = NodeMappingBuilder.on("id")
       .withImpliedLabel("Person")
       .withImpliedLabel("Human")
       .withPropertyKey("age")
       .withPropertyKey("name")
       .withPropertyKey("gender")
+      .build
 
-    MemNodeTable(nodeMapping, Table(schema, data))
+    MemEntityTable(nodeMapping, MemTable(schema, data))
   }
 
-  def rels: MemRelationshipTable = {
+  def rels: MemEntityTable = {
     val schema = Schema.empty
       .withColumn("id", CTInteger)
       .withColumn("source", CTInteger)
@@ -63,12 +62,13 @@ object DemoData {
 
     val data = Seq(Row(0L, 0L, 1L, 1984L))
 
-    val relMapping = RelationshipMapping.on("id")
+    val relMapping = RelationshipMappingBuilder.on("id")
       .from("source")
       .to("target")
       .withRelType("KNOWS")
       .withPropertyKey("since")
+      .build
 
-    MemRelationshipTable(relMapping, Table(schema, data))
+    MemEntityTable(relMapping, MemTable(schema, data))
   }
 }

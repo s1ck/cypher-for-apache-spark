@@ -1,8 +1,9 @@
 package org.opencypher.memcypher.support.creation
 
-import org.opencypher.memcypher.api.MemCypherSession
+import org.opencypher.memcypher.{MemCypherSession, MemTable}
+import org.opencypher.memcypher.impl.MemTable
 import org.opencypher.memcypher.impl.cyphertable.{MemNodeTable, MemRelationshipTable}
-import org.opencypher.memcypher.impl.table.{ColumnSchema, Row, Schema, Table}
+import org.opencypher.memcypher.impl.table.{ColumnSchema, Row, Schema}
 import org.opencypher.okapi.api.io.conversion.{NodeMapping, RelationshipMapping}
 import org.opencypher.okapi.api.schema.PropertyKeys.PropertyKeys
 import org.opencypher.okapi.api.types.CTInteger
@@ -14,7 +15,7 @@ import org.opencypher.spark.testing.support.creation.caps.CAPSScanGraphFactory.t
 object MemScanGraphFactory extends CypherTestGraphFactory[MemCypherSession] {
   override def name: String = "MemScanGraphFactory"
 
-  override def apply(propertyGraph: InMemoryTestGraph)(implicit session: MemCypherSession): ScanGraph[Table] = {
+  override def apply(propertyGraph: InMemoryTestGraph)(implicit session: MemCypherSession): ScanGraph[MemTable] = {
     val graphSchema = computeSchema(propertyGraph)
 
     val nodeScans = graphSchema.labelCombinations.combos.map { labels =>
@@ -35,7 +36,7 @@ object MemScanGraphFactory extends CypherTestGraphFactory[MemCypherSession] {
       MemNodeTable.fromMapping(NodeMapping
         .on(tableEntityIdKey)
         .withImpliedLabels(labels.toSeq: _*)
-        .withPropertyKeys(propKeys.keys.toSeq: _*), Table(tableSchema, rows))
+        .withPropertyKeys(propKeys.keys.toSeq: _*), MemTable(tableSchema, rows))
     }
 
     val relScans = graphSchema.relationshipTypes.map { relType =>
@@ -59,7 +60,7 @@ object MemScanGraphFactory extends CypherTestGraphFactory[MemCypherSession] {
         .from(sourceStartNodeKey)
         .to(sourceEndNodeKey)
         .relType(relType)
-        .withPropertyKeys(propKeys.keys.toSeq: _*), Table(tableSchema, rows))
+        .withPropertyKeys(propKeys.keys.toSeq: _*), MemTable(tableSchema, rows))
     }
 
     new ScanGraph(nodeScans.toSeq ++ relScans, graphSchema, Set(0))

@@ -1,4 +1,4 @@
-package org.opencypher.memcypher.impl.types
+package org.opencypher.memcypher.types
 
 import org.opencypher.okapi.api.types._
 import org.opencypher.okapi.impl.exception.IllegalArgumentException

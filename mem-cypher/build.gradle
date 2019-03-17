@@ -1,0 +1,5 @@
+description = 'mem-cypher'
+
+dependencies {
+    compile project(':okapi-relational')
+}

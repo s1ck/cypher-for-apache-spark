@@ -1,6 +1,6 @@
-package org.opencypher.memcypher.impl.table
+package org.opencypher.memcypher.table
 
-import org.opencypher.memcypher.impl.types.CypherTypeOps._
+import org.opencypher.memcypher.types.CypherTypeOps._
 import org.opencypher.okapi.api.value.CypherValue.CypherMap
 import org.opencypher.okapi.impl.exception.{NotImplementedException, UnsupportedOperationException}
 import org.opencypher.okapi.ir.api.expr._
@@ -74,8 +74,6 @@ object Row {
       case TrueLit => true
 
       case FalseLit => false
-
-      case _: NullLit => null
 
       case Exists(inner) =>
         evaluate(inner) != null

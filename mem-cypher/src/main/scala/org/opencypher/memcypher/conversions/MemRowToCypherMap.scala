@@ -1,6 +1,6 @@
-package org.opencypher.memcypher.impl.convert
+package org.opencypher.memcypher.conversions
 
-import org.opencypher.memcypher.impl.table.{Row, Schema}
+import org.opencypher.memcypher.table.{Row, Schema}
 import org.opencypher.okapi.api.types.{CTList, CTNode, CTRelationship}
 import org.opencypher.okapi.api.value.CypherValue._
 import org.opencypher.okapi.api.value._

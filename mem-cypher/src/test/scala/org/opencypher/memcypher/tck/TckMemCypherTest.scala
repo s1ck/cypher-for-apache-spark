@@ -28,8 +28,7 @@ package org.opencypher.memcypher.tck
 
 import java.io.File
 
-import org.opencypher.memcypher.MemCypherTestSuite
-import org.opencypher.memcypher.api.MemCypherSession
+import org.opencypher.memcypher.{MemCypherSession, MemCypherTestSuite}
 import org.opencypher.memcypher.support.creation.MemScanGraphFactory
 import org.opencypher.okapi.tck.test.Tags.{BlackList, WhiteList}
 import org.opencypher.okapi.tck.test.{ScenariosFor, TCKGraph}

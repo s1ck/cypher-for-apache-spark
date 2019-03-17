@@ -1,6 +1,6 @@
-package org.opencypher.memcypher.impl.convert
+package org.opencypher.memcypher.conversions
 
-import org.opencypher.memcypher.impl.table.{ColumnSchema, Schema}
+import org.opencypher.memcypher.table.{ColumnSchema, Schema}
 import org.opencypher.okapi.relational.impl.table.RecordHeader
 
 object MemCypherConversions {
