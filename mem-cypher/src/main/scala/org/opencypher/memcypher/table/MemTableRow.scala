@@ -6,14 +6,14 @@ import org.opencypher.okapi.impl.exception.{NotImplementedException, Unsupported
 import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.relational.impl.table.RecordHeader
 
-object Row {
+object MemTableRow {
 
-  def apply(values: Any*): Row = Row(values.toArray)
+  def apply(values: Any*): MemTableRow = MemTableRow(values.toArray)
 
-  def fromSeq(values: Seq[Any]): Row = Row(values.toArray)
+  def fromSeq(values: Seq[Any]): MemTableRow = MemTableRow(values.toArray)
 
-  implicit class RichMemRow(row: Row) {
-    def evaluate(expr: Expr)(implicit header: RecordHeader, schema: Schema, parameters: CypherMap): Any = expr match {
+  implicit class RichMemTableRow(row: MemTableRow) {
+    def evaluate(expr: Expr)(implicit header: RecordHeader, schema: MemTableSchema, parameters: CypherMap): Any = expr match {
 
       case Param(name) => parameters(name).value
 
@@ -100,7 +100,7 @@ object Row {
       case other => throw UnsupportedOperationException(s"Evaluating expression $other is not supported.")
     }
 
-    def eval[T](expr: Expr)(implicit header: RecordHeader, schema: Schema, parameters: CypherMap): Option[T] = evaluate(expr) match {
+    def eval[T](expr: Expr)(implicit header: RecordHeader, schema: MemTableSchema, parameters: CypherMap): Option[T] = evaluate(expr) match {
       case null | None => None
       case Some(other) => Some(other.asInstanceOf[T])
       case other => Some(other.asInstanceOf[T])
@@ -110,13 +110,13 @@ object Row {
 
 // Can't use Array[CypherValue] here, since using value classes in arrays enforces allocation:
 // see https://docs.scala-lang.org/overviews/core/value-classes.html
-case class Row(values: Array[Any]) extends AnyVal {
+case class MemTableRow(values: Array[Any]) extends AnyVal {
 
   def get(i: Int): Any = values(i)
 
   def getAs[T](i: Int): T = get(i).asInstanceOf[T]
 
-  def ++(other: Row): Row = copy(values = values ++ other.values)
+  def ++(other: MemTableRow): MemTableRow = copy(values = values ++ other.values)
 
   override def toString: String = values.mkString(", ")
 }

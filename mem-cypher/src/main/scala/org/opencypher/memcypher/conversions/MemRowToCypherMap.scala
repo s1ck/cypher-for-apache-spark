@@ -1,6 +1,6 @@
 package org.opencypher.memcypher.conversions
 
-import org.opencypher.memcypher.table.{Row, Schema}
+import org.opencypher.memcypher.table.{MemTableRow, MemTableSchema}
 import org.opencypher.okapi.api.types.{CTList, CTNode, CTRelationship}
 import org.opencypher.okapi.api.value.CypherValue._
 import org.opencypher.okapi.api.value._
@@ -8,14 +8,14 @@ import org.opencypher.okapi.impl.exception.UnsupportedOperationException
 import org.opencypher.okapi.ir.api.expr.{Expr, ListSegment, Var}
 import org.opencypher.okapi.relational.impl.table.RecordHeader
 
-final case class MemRowToCypherMap(header: RecordHeader, schema: Schema) extends (Row => CypherMap) {
+final case class MemRowToCypherMap(header: RecordHeader, schema: MemTableSchema) extends (MemTableRow => CypherMap) {
 
-  override def apply(MemRow: Row): CypherMap = {
+  override def apply(MemRow: MemTableRow): CypherMap = {
     val values = header.returnItems.map(r => r.name -> constructValue(MemRow, r)).toSeq
     CypherMap(values: _*)
   }
 
-  private def constructValue(MemRow: Row, v: Var): CypherValue = {
+  private def constructValue(MemRow: MemTableRow, v: Var): CypherValue = {
     v.cypherType.material match {
       case _: CTNode =>
         collectNode(MemRow, v)
@@ -30,10 +30,10 @@ final case class MemRowToCypherMap(header: RecordHeader, schema: Schema) extends
     }
   }
 
-  private def constructFromExpression(row: Row, expr: Expr): CypherValue =
+  private def constructFromExpression(row: MemTableRow, expr: Expr): CypherValue =
     CypherValue(row.getAs[Any](schema.fieldIndex(header.column(expr))))
 
-  private def collectNode(row: Row, v: Var): CypherValue = {
+  private def collectNode(row: MemTableRow, v: Var): CypherValue = {
     val idValue = row.getAs[Any](schema.fieldIndex(header.column(v)))
     idValue match {
       case null => CypherNull
@@ -55,7 +55,7 @@ final case class MemRowToCypherMap(header: RecordHeader, schema: Schema) extends
     }
   }
 
-  private def collectRel(row: Row, v: Var): CypherValue = {
+  private def collectRel(row: MemTableRow, v: Var): CypherValue = {
     val idValue = row.getAs[Any](schema.fieldIndex(header.column(v)))
     idValue match {
       case null => CypherNull
@@ -80,7 +80,7 @@ final case class MemRowToCypherMap(header: RecordHeader, schema: Schema) extends
     }
   }
 
-  private def collectComplexList(MemRow: Row, expr: Var): CypherList = {
+  private def collectComplexList(MemRow: MemTableRow, expr: Var): CypherList = {
     val elements = header.ownedBy(expr).collect {
       case p: ListSegment => p
     }.toSeq.sortBy(_.index)

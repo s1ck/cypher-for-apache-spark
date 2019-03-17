@@ -4,21 +4,21 @@ import org.opencypher.okapi.api.types.CypherType
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
 import org.opencypher.okapi.impl.util.TablePrinter
 
-object Schema {
-  def empty: Schema = Schema(Array.empty)
+object MemTableSchema {
+  def empty: MemTableSchema = MemTableSchema(Array.empty)
 }
 
-case class Schema(columns: Array[ColumnSchema]) {
+case class MemTableSchema(columns: Array[ColumnSchema]) {
 
   def fieldIndex(name: String): Int = columns.map(_.name).indexOf(name)
 
   def dataType(name: String): CypherType = columns(fieldIndex(name)).dataType
 
-  def withColumn(columnMeta: ColumnSchema): Schema = withColumn(columnMeta.name, columnMeta.dataType)
+  def withColumn(columnMeta: ColumnSchema): MemTableSchema = withColumn(columnMeta.name, columnMeta.dataType)
 
-  def withColumn(name: String, dataType: CypherType): Schema = copy(columns = columns :+ ColumnSchema(name, dataType))
+  def withColumn(name: String, dataType: CypherType): MemTableSchema = copy(columns = columns :+ ColumnSchema(name, dataType))
 
-  def withColumnRenamed(oldName: String, newName: String): Schema = {
+  def withColumnRenamed(oldName: String, newName: String): MemTableSchema = {
     val newColumns = columns.map {
       case columnMeta if columnMeta.name == oldName => ColumnSchema(newName, columnMeta.dataType)
       case columnMeta => columnMeta
@@ -28,7 +28,7 @@ case class Schema(columns: Array[ColumnSchema]) {
 
   def columnNames: Array[String] = columns.map(_.name)
 
-  def select(names: Seq[String]): Schema = names.foldLeft(Schema.empty) {
+  def select(names: Seq[String]): MemTableSchema = names.foldLeft(MemTableSchema.empty) {
     case (currentSchema, columnName) =>
       val columnMeta = columns
         .collectFirst { case colMeta if colMeta.name == columnName => colMeta }
@@ -36,7 +36,7 @@ case class Schema(columns: Array[ColumnSchema]) {
       currentSchema.withColumn(columnMeta)
   }
 
-  def ++(other: Schema): Schema = copy(columns = columns ++ other.columns)
+  def ++(other: MemTableSchema): MemTableSchema = copy(columns = columns ++ other.columns)
 
   def pretty: String = TablePrinter.toTable(columns.map(_.name), Seq(columns.map(_.dataType).toSeq))
 

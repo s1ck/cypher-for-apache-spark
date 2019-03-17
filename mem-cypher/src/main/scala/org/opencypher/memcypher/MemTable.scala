@@ -1,6 +1,6 @@
 package org.opencypher.memcypher
 
-import org.opencypher.memcypher.table.{Row, Schema}
+import org.opencypher.memcypher.table.{MemTableRow, MemTableSchema}
 import org.opencypher.okapi.api.types.CypherType
 import org.opencypher.okapi.api.value.CypherValue.{CypherMap, CypherValue}
 import org.opencypher.okapi.impl.exception.UnsupportedOperationException
@@ -13,35 +13,41 @@ import org.opencypher.okapi.relational.impl.table.RecordHeader
 import scala.util.hashing.MurmurHash3
 
 object MemTable {
-  def empty: MemTable = MemTable(schema = Schema.empty, data = Seq.empty)
+  def empty: MemTable = MemTable(schema = MemTableSchema.empty, data = Seq.empty)
 
-  def unit: MemTable = MemTable(schema = Schema.empty, data = Seq(Row()))
+  def unit: MemTable = MemTable(schema = MemTableSchema.empty, data = Seq(MemTableRow()))
 }
 
-case class MemTable(schema: Schema, data: Seq[Row]) extends RelationalTable[MemTable] {
+case class MemTable(schema: MemTableSchema, data: Seq[MemTableRow]) extends RelationalTable[MemTable] {
 
-  private implicit val implicitSchema: Schema = schema
+  private implicit val implicitSchema: MemTableSchema = schema
 
   override def select(cols: String*): MemTable = {
-    val columnIndices = cols.map(schema.fieldIndex)
+    val renames = cols.map(c => c -> c)
+    select(renames.head, renames.tail: _*)
+  }
 
-    val newSchema = schema.select(cols)
-    val newLength = cols.length
+  override def select(col: (String, String), cols: (String, String)*): MemTable = {
+    val renames = col +: cols
+    val (oldCols, newCols) = renames.unzip
+
+    val columnIndices = oldCols.map(schema.fieldIndex)
+
+    val newSchema = renames.foldLeft(schema) {
+      case (currentSchema, (oldCol, newCol)) => currentSchema.withColumnRenamed(oldCol, newCol)
+    }.select(newCols)
+
+    val newLength = renames.length
 
     val newData = data.map { row =>
       val newValues = Array.ofDim[Any](newLength)
       for (i <- 0 until newLength) {
         newValues(i) = row.get(columnIndices(i))
       }
-      Row(newValues)
+      MemTableRow(newValues)
     }
     MemTable(newSchema, newData)
   }
-
-  override def select(
-    col: (String, String),
-    cols: (String, String)*
-  ): MemTable = ???
 
   override def filter(expr: Expr)(implicit header: RecordHeader, parameters: CypherMap): MemTable =
     copy(data = data.filter(_.eval[Boolean](expr).getOrElse(false)))
@@ -70,7 +76,7 @@ case class MemTable(schema: Schema, data: Seq[Row]) extends RelationalTable[MemT
     val rightIndices = rightCols.map(other.schema.fieldIndex)
 
     val hashTable = data.map(row => hash(leftIndices.map(row.get)) -> row).groupBy(_._1)
-    val emptyRow = Row(Array.ofDim[Any](schema.columns.length))
+    val emptyRow = MemTableRow(Array.ofDim[Any](schema.columns.length))
 
     val newData = other.data
       .filter(rightRow => rightOuter || hashTable.contains(hash(rightIndices.map(rightRow.get))))
@@ -86,7 +92,7 @@ case class MemTable(schema: Schema, data: Seq[Row]) extends RelationalTable[MemT
 
           case None if rightOuter => Seq(emptyRow ++ rightRow)
 
-          case None => Seq.empty[Row]
+          case None => Seq.empty[MemTableRow]
         }
       })
 
@@ -94,20 +100,20 @@ case class MemTable(schema: Schema, data: Seq[Row]) extends RelationalTable[MemT
   }
 
   private def cartesian(other: MemTable): MemTable =
-    MemTable(schema = schema ++ other.schema, data = for {left <- data; right <- other.data} yield Row(left.values ++ right.values))
+    MemTable(schema = schema ++ other.schema, data = for {left <- data; right <- other.data} yield MemTableRow(left.values ++ right.values))
 
   override def unionAll(other: MemTable): MemTable = MemTable(schema, data = data ++ other.data)
 
   override def orderBy(sortItems: (Expr, Order)*)(implicit header: RecordHeader, parameters: CypherMap): MemTable = {
-    import Row._
+    import MemTableRow._
     import org.opencypher.memcypher.types.CypherTypeOps._
 
     val sortItemsWithOrdering = sortItems.map {
       case (sortExpr, order) => (sortExpr, order, sortExpr.cypherType.ordering.asInstanceOf[Ordering[Any]])
     }
 
-    object rowOrdering extends Ordering[Row] {
-      override def compare(leftRow: Row, rightRow: Row): Int = {
+    object rowOrdering extends Ordering[MemTableRow] {
+      override def compare(leftRow: MemTableRow, rightRow: MemTableRow): Int = {
         sortItemsWithOrdering.map { case (sortExpr, order, ordering) =>
           val leftValue = leftRow.evaluate(sortExpr)
           val rightValue = rightRow.evaluate(sortExpr)
@@ -207,7 +213,7 @@ case class MemTable(schema: Schema, data: Seq[Row]) extends RelationalTable[MemT
     val newSchema = columns.foldLeft(schema) {
       case (currentSchema, (expr, columnName)) => currentSchema.withColumn(columnName, expr.cypherType)
     }
-    val newData = data.map(row => Row(row.values ++ columns.map { case (expr, _) => row.evaluate(expr) }))
+    val newData = data.map(row => MemTableRow(row.values ++ columns.map { case (expr, _) => row.evaluate(expr) }))
 
     MemTable(newSchema, newData)
   }
